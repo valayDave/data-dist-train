@@ -46,7 +46,7 @@ def setup(rank, world_size,backend='gloo'):
     if backend == 'gloo':
         dist.init_process_group(backend, rank=rank, world_size=world_size)
     else: 
-        dist.init_process_group(backend, rank=rank, world_size=world_size,init_method='file://home/ubuntu/data-dist-train/commons')
+        dist.init_process_group(backend, rank=rank, world_size=world_size,init_method='tcp://127.0.0.1:12355')
         
 
 class Net(nn.Module):
