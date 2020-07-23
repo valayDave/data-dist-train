@@ -43,7 +43,11 @@ def setup(rank, world_size,backend='gloo'):
     os.environ['MASTER_PORT'] = '12355'
 
     # initialize the process group
-    dist.init_process_group(backend, rank=rank, world_size=world_size)
+    if backend == 'gloo':
+        dist.init_process_group(backend, rank=rank, world_size=world_size)
+    else: 
+        dist.init_process_group(backend, rank=rank, world_size=world_size,init_method='file://home/ubuntu/data-dist-train/commons')
+        
 
 class Net(nn.Module):
     """ Network architecture. """
