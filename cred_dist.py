@@ -37,6 +37,7 @@ DATASET_PATH = os.path.join(
 )
 import pickle
 from sklearn.preprocessing import StandardScaler
+from torch.nn.parallel import DistributedDataParallel
 
 def setup(rank, world_size,backend='gloo'):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -44,7 +45,7 @@ def setup(rank, world_size,backend='gloo'):
 
     # initialize the process group
     if backend == 'gloo':
-        dist.init_process_group(backend, rank=rank, world_size=world_size)
+        dist.init_process_group(backend, rank=rank, world_size=world_size,init_method='env://127.0.0.1:12355')
     else: 
         dist.init_process_group(backend, rank=rank, world_size=world_size,init_method='tcp://127.0.0.1:12355')
         
@@ -109,9 +110,9 @@ def run(rank, size,dist_backend,model_save_path,checkpoint_every):
     setup(rank,world_size=size,backend=dist_backend)
     torch.manual_seed(1234)
     train_set, bsz = get_dataset(DATASET_PATH)
-    
     model = Net()
     model = model.double()
+    model = DistributedDataParallel(model, device_ids=[0], output_device=0)
     safe_mkdir(model_save_path)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     num_batches = ceil(len(train_set.dataset) / float(bsz))

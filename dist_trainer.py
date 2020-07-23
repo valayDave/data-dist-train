@@ -6,7 +6,6 @@ from typing import List
 import datetime 
 from torch.autograd import Variable
 import os
-from torch.nn.parallel import DistributedDataParallel
 
 DEFAULT_MODEL_PATH = os.path.join(\
     os.path.dirname(\
@@ -32,7 +31,7 @@ def class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn = F.nl
     losses = AverageMeter('Loss', ':.4e')
     acc = AverageMeter('Acc@1', ':6.2f')
     end = time.time()
-    model = DistributedDataParallel(model, device_ids=[0], output_device=0)
+    
     model.train()
     curr_index = 0
     print("Train Loop Initiated For Rank %d"%rank)
