@@ -43,7 +43,7 @@ class ConfusionMatrix:
         target : shape(batch_size)
         """
         target = target.view(1,-1)
-        conf_add_vec = torch.cat((target,pred),1)
+        conf_add_vec = torch.cat((target.long(),pred),1)
         for vec in conf_add_vec:
             self.conf_mat[vec[0]][vec[1]]+=1
 

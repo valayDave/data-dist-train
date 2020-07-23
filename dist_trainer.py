@@ -11,7 +11,6 @@ DEFAULT_MODEL_PATH = os.path.join(\
         os.path.abspath(__file__)
     ),
     'model_data',
-    'minst',
     )
 def sync_params(model):
     """ broadcast rank 0 parameter to all ranks """
@@ -24,22 +23,21 @@ def sync_grads(model):
         dist.all_reduce(param.grad.data)
 
 
-def class_train_loop(train_set,model,optimizer,num_labels,loss_fn = F.nll_loss):
+def class_train_loop(train_set,model,optimizer,conf_matrix,loss_fn = F.nll_loss):
     epoch_loss = 0.0
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     acc = AverageMeter('Acc@1', ':6.2f')
-    conf_matrix = ConfusionMatrix([i for i in range(num_labels)])
     end = time.time()
     model.train()
     for data, target in train_set:
         data, target = data, target
         optimizer.zero_grad()
         output = model(data)
-        loss = loss_fn(output, target)
+        loss = loss_fn(output, target.view(-1,1))
         epoch_loss += loss.data
         loss.backward()
-        acc_val = get_accuracy(output,target,conf_matrix)
+        acc_val = get_accuracy(output.float(),target.float(),conf_matrix)
         losses.update(loss.item(),target.shape[0])
         acc.update(acc_val,target.shape[0])
         batch_time.update(time.time() - end)
@@ -49,20 +47,19 @@ def class_train_loop(train_set,model,optimizer,num_labels,loss_fn = F.nll_loss):
         optimizer.step()
     return (conf_matrix,batch_time,acc,losses)
 
-def class_validation_loop(train_set,model,num_labels,loss_fn = F.nll_loss):
+def class_validation_loop(train_set,model,conf_matrix,loss_fn = F.nll_loss):
     epoch_loss = 0.0
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     acc = AverageMeter('Acc@1', ':6.2f')
-    conf_matrix = ConfusionMatrix([i for i in range(num_labels)])
     end = time.time()
     model.eval()
     for data, target in train_set:
         data, target = data, target
         output = model(data)
-        loss = loss_fn(output, target)
+        loss = loss_fn(output, target.view(-1,1))
         epoch_loss += loss.data
-        acc_val = get_accuracy(output,target,conf_matrix)
+        acc_val = get_accuracy(output.float(),target.float(),conf_matrix)
         losses.update(loss.item(),target.shape[0])
         acc.update(acc_val,target.shape[0])
         batch_time.update(time.time() - end)
