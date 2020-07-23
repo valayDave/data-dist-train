@@ -116,7 +116,7 @@ def run(rank, size,model_save_path,checkpoint_every):
     epoch_tuples = []
     num_labels = 2
     sync_params(model)
-    loss_fn = nn.BCELoss()
+    loss_fn = nn.MSELoss()
     for epoch in range(100):
         # make sure we have the same parameters for all ranks
         conf_matrix = ConfusionMatrix([i for i in range(num_labels)])
