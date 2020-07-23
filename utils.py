@@ -2,6 +2,8 @@ import torch
 import numpy as np
 from typing import List
 import os 
+import pandas as pd
+import tabulate
 
 
 #https://stackoverflow.com/questions/35572000/how-can-i-plot-a-confusion-matrix
@@ -49,7 +51,10 @@ class ConfusionMatrix:
         conf_add_vec = torch.cat((target.long(),pred),1)
         for vec in conf_add_vec:
             self.conf_mat[vec[0]][vec[1]]+=1
-        
+
+    def __str__(self):
+        df = pd.DataFrame(self.conf_mat,['True_'+str(i) for i in self.labels],['Pred_'+str(i) for i in self.labels])
+        return tabulate.tabulate(df,tablefmt='github', headers='keys')
 
 
 def get_accuracy(output:torch.Tensor, target:torch.Tensor,conf_matrix:ConfusionMatrix):

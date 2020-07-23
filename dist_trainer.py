@@ -2,6 +2,7 @@ from utils import *
 import torch.nn.functional as F
 import torch.distributed as dist
 import time
+from typing import List
 import datetime 
 from torch.autograd import Variable
 import os
@@ -23,13 +24,15 @@ def sync_grads(model):
         dist.all_reduce(param.grad.data)
 
 
-def class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn = F.nll_loss):
+def class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn = F.nll_loss,print_every=10,rank=None):
     epoch_loss = 0.0
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
     acc = AverageMeter('Acc@1', ':6.2f')
     end = time.time()
     model.train()
+    curr_index = 0
+    print("Train Loop Initiated For Rank %d"%rank)
     for data, target in train_set:
         data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
@@ -46,7 +49,30 @@ def class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn = F.nl
         end = time.time()
         sync_grads(model)
         optimizer.step()
+        if curr_index % print_every == 0:
+            if rank is None or rank == 0:
+                print_meters([losses,acc,batch_time],conf_matrix,rank=rank,batch_idx=curr_index)
+        curr_index+=1
+    print("\n\nCompleted Training Loop")
+    print_meters([losses,acc,batch_time],conf_matrix)
     return (conf_matrix,batch_time,acc,losses)
+
+def print_meters(meters:List[AverageMeter],conf_matrix,rank=None,batch_idx=None):
+    meter_vals = ''.join(['\n\t'+str(meter) for meter in meters])
+    print_str= '\n\n'
+    if rank is not None:
+        if batch_idx is not None:
+            print_str = "\nMeter Readings On Rank %d And BatchIdx %d\n"%(rank,batch_idx)
+        else:
+            print_str = "\nMeter Readings On Rank %d\n"%rank
+    else:
+        if batch_idx is not None:
+            print_str = "\nMeter Readings On BatchIdx %d\n"%(batch_idx)
+    print(print_str)
+    print(print_str)
+    print(meter_vals)
+    print('Confusion Matrix')
+    print(str(conf_matrix))
 
 def class_validation_loop(train_set,model,conf_matrix,loss_fn = F.nll_loss):
     epoch_loss = 0.0

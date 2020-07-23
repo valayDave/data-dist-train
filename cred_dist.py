@@ -121,7 +121,7 @@ def run(rank, size,dist_backend,model_save_path,checkpoint_every):
     for epoch in range(100):
         # make sure we have the same parameters for all ranks
         conf_matrix = ConfusionMatrix([i for i in range(num_labels)])
-        train_loop_resp = class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn=loss_fn)
+        train_loop_resp = class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn=loss_fn,rank=rank)
         loss_meter = train_loop_resp[3]
         acc_meter = train_loop_resp[2]
         # val_loop_resp = class_validation_loop(test_set,model,10)
@@ -135,6 +135,7 @@ def run(rank, size,dist_backend,model_save_path,checkpoint_every):
 
 def run_demo(world_size,model_save_path=DEFAULT_MODEL_SAVE_PATH,checkpoint_every=5):
     backend = 'nccl' if torch.cuda.is_available() else 'gloo'
+    print("Using Backend %s "%backend)
     mp.spawn(run,\
              args=(world_size,backend,model_save_path,checkpoint_every),\
              nprocs=world_size,\
