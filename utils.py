@@ -49,7 +49,7 @@ class ConfusionMatrix:
         """
         target = target.view(-1,1)
         conf_add_vec = torch.cat((target.long(),pred),1)
-        for vec in conf_add_vec:
+        for vec in conf_add_vec.cpu().detach().numpy():
             self.conf_mat[vec[0]][vec[1]]+=1
 
     def __str__(self):
