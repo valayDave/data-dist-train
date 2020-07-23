@@ -1,3 +1,4 @@
+
 ## Running MNIST DDP 
 ```
 python mnist_dist.py 

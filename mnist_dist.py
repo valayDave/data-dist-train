@@ -20,20 +20,32 @@ This example make following updates upon the tutorial
 import os
 import sys
 import torch
-import torch.distributed as dist
+
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.multiprocessing as mp
 import torch.optim as optim
+from typing import List
+
 
 from math import ceil
 from random import Random
 from torch.multiprocessing import Process
-from torch.autograd import Variable
+
 from torchvision import datasets, transforms
+import numpy as np
+
+from dist_trainer import *
+
+import os
+DEFAULT_MODEL_SAVE_PATH =\
+        os.path.join(\
+            DEFAULT_MODEL_PATH,\
+            datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')\
+        )
 
 gbatch_size = 128
-
+import pickle
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -52,8 +64,6 @@ class Partition(object):
     def __init__(self, data, index):
         self.data = data
         self.index = index
-        print(len(data),'data')
-        print(len(index),'index')
 
     def __len__(self):
         return len(self.index)
@@ -133,47 +143,52 @@ def partition_dataset():
     print("Getting Dataset For %d %d"%(dist.get_rank(),size))
     return train_set, bsz
 
-def sync_params(model):
-    """ broadcast rank 0 parameter to all ranks """
-    for param in model.parameters():
-        dist.broadcast(param.data, 0)
 
-def sync_grads(model):
-    """ all_reduce grads from all ranks """
-    for param in model.parameters():
-        dist.all_reduce(param.grad.data)
-
-def run(rank, size):
+def save_data(model_save_path,model,optimizer,meta):
+    with open(os.path.join(model_save_path,'epoch_arr'), 'wb') as handle:
+        pickle.dump(meta, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    torch.save({
+        'model': model.state_dict(),
+        'optimizer':optimizer.state_dict(),
+    },os.path.join(model_save_path,'model.pth'))
+    
+    
+def run(rank, size,model_save_path,checkpoint_every):
     """ Distributed Synchronous SGD Example """
     setup(rank,world_size=size)
     torch.manual_seed(1234)
     train_set, bsz = partition_dataset()
+    test_ds = datasets.MNIST('./data',train=False,transform=transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307, ), (0.3081, ))
+        ]))
+    test_set = torch.utils.data.DataLoader(
+        test_ds, batch_size=bsz, shuffle=True)
     model = Net()
     model = model
+    safe_mkdir(model_save_path)
     optimizer = optim.SGD(model.parameters(), lr=0.01, momentum=0.5)
-
     num_batches = ceil(len(train_set.dataset) / float(bsz))
     #print("num_batches = ", num_batches)
+    epoch_tuples = []
+    sync_params(model)
     for epoch in range(10):
-        epoch_loss = 0.0
         # make sure we have the same parameters for all ranks
-        sync_params(model)
-        for data, target in train_set:
-            data, target = Variable(data), Variable(target)
-            optimizer.zero_grad()
-            output = model(data)
-            loss = F.nll_loss(output, target)
-            epoch_loss += loss.data
-            loss.backward()
-            # all_reduce grads
-            sync_grads(model)
-            optimizer.step()
-        print('Epoch {} Loss {:.6f} Global batch size {} on {} ranks For Rank : {}'.format(
-            epoch, epoch_loss / num_batches, gbatch_size, dist.get_world_size(),dist.get_rank()))
+        train_loop_resp = class_train_loop(train_set,model,optimizer,10)
+        loss_meter = train_loop_resp[3]
+        acc_meter = train_loop_resp[2]
+        val_loop_resp = class_validation_loop(test_set,model,10)
+        epoch_tuples.append((epoch,train_loop_resp,val_loop_resp))
+        
+        print('Epoch {} Loss {:.6f} Acc {:.6f} Global batch size {} on {} ranks For Rank : {}'.format(
+            epoch, loss_meter.avg,acc_meter.avg, gbatch_size, dist.get_world_size(),dist.get_rank()))
+        if rank == 0 and epoch % checkpoint_every==0:
+            save_data(model_save_path,model,optimizer,epoch_tuples)
+        
 
-def run_demo(demo_fn, world_size):
+def run_demo(demo_fn, world_size,model_save_path=DEFAULT_MODEL_SAVE_PATH,checkpoint_every=1):
     mp.spawn(demo_fn,
-             args=(world_size,),
+             args=(world_size,model_save_path,checkpoint_every),
              nprocs=world_size,
              join=True)
 
@@ -186,5 +201,6 @@ if __name__ == "__main__":
     # run(rank, size)
     datasets.MNIST('./data',download=True)
     run_demo(run,4)
+    print("Now I am Done")
 
 
