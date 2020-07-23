@@ -35,7 +35,7 @@ def class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn = F.nl
     curr_index = 0
     print("Train Loop Initiated For Rank %d"%rank)
     for data, target in train_set:
-        data, target = data.to(device), target.to(device)
+        data, target = data.to(device,non_blocking=True), target.to(device,non_blocking=True)
         print(data.shape,target.shape)
         optimizer.zero_grad()
         output = model(data)
