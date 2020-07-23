@@ -20,6 +20,7 @@ def sync_params(model):
 
 def sync_grads(model):
     """ all_reduce grads from all ranks """
+    print("Syncing Grads")
     for param in model.parameters():
         dist.all_reduce(param.grad.data)
 
@@ -42,7 +43,7 @@ def class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn = F.nl
         loss.backward()
         
         acc_val = get_accuracy(output.float(),target.float(),conf_matrix)
-        losses.update(loss.item(),target.shape[0])
+        losses.update(float(loss.item()),target.shape[0])
         acc.update(acc_val,target.shape[0])
         batch_time.update(time.time() - end)
         # all_reduce grads
