@@ -19,6 +19,8 @@ import pandas
 from dist_trainer import *
 
 import os
+SELECTED_DISTRIBUTION = 'n_5_b_2'
+
 DEFAULT_MODEL_SAVE_PATH =\
         os.path.join(\
             DEFAULT_MODEL_PATH,\
@@ -30,7 +32,7 @@ gbatch_size = 128
 DATASET_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
     'dataset-repo',
-    'n_5_b_2',
+    SELECTED_DISTRIBUTION,
     'dispatcher_folder_credit',
 )
 import pickle
@@ -43,55 +45,6 @@ def setup(rank, world_size):
 
     # initialize the process group
     dist.init_process_group("gloo", rank=rank, world_size=world_size)
-
-
-def cleanup():
-    dist.destroy_process_group()
-
-class Partition(object):
-    """ Dataset-like object, but only access a subset of it. """
-
-    def __init__(self, data, index):
-        self.data = data
-        self.index = index
-
-    def __len__(self):
-        return len(self.index)
-
-    def __getitem__(self, index):
-        data_idx = self.index[index]
-        return self.data[data_idx]
-
-
-class DataPartitioner(object):
-    """ Partitions a dataset into different chuncks. """
-
-    def __init__(self, data, sizes=[0.7, 0.2, 0.1], seed=1234):
-        self.data = data
-        self.partitions = []
-        rng = Random()
-        rng.seed(seed)
-        data_len = len(data)
-        indexes = [x for x in range(0, data_len)]
-        rng.shuffle(indexes)
-        """
-        Be cautious about index shuffle, this is performed on each rank
-        The shuffled index must be unique across all ranks
-        Theoretically with the same seed Random() generates the same sequence
-        This might not be true in rare cases
-        You can add an additional synchronization for 'indexes', just for safety
-        Anyway, this won't take too much time
-        e.g.
-            dist.broadcast(indexes, 0)
-        """
-        for frac in sizes:
-            part_len = int(frac * data_len)
-            self.partitions.append(indexes[0:part_len])
-            indexes = indexes[part_len:]
-
-    def use(self, partition):
-        return Partition(self.data, self.partitions[partition])
-
 
 class Net(nn.Module):
     """ Network architecture. """
@@ -113,11 +66,7 @@ class Net(nn.Module):
         return x
 
 
-def get_dataset(data_path):
-    size = dist.get_world_size()
-    bsz = int(gbatch_size / float(size))
-    final_path = os.path.join(DATASET_PATH,'output'+str(dist.get_rank()+1)+'.csv')
-    df = pandas.read_csv(final_path)
+def dataset_transform(df):
     X = df.iloc[:, 1:-1].values # extracting features
     y = df.iloc[:, -1].values # extracting labels
     sc = StandardScaler()
@@ -125,11 +74,20 @@ def get_dataset(data_path):
     partition = torch.from_numpy(X)
     labels = torch.from_numpy(y).double()
     part = torch.utils.data.TensorDataset(partition,labels)
+    return part
+
+def get_dataset(data_path):
+    size = dist.get_world_size()
+    bsz = int(gbatch_size / float(size))
+    final_path = os.path.join(DATASET_PATH,'output'+str(dist.get_rank()+1)+'.csv')
+    df = pandas.read_csv(final_path)
+    
+    part = dataset_transform(df)
     train_set = torch.utils.data.DataLoader(
         part, batch_size=bsz, shuffle=True)
     print("Getting Dataset For %d %d"%(dist.get_rank(),size))
-    print(partition.shape,'partition.shape')
-    print(labels.shape,'labels.shape')
+    # print(partition.shape,'partition.shape')
+    # print(labels.shape,'labels.shape')
     return train_set, bsz
 
 
@@ -159,7 +117,7 @@ def run(rank, size,model_save_path,checkpoint_every):
     num_labels = 2
     sync_params(model)
     loss_fn = nn.BCELoss()
-    for epoch in range(10):
+    for epoch in range(100):
         # make sure we have the same parameters for all ranks
         conf_matrix = ConfusionMatrix([i for i in range(num_labels)])
         train_loop_resp = class_train_loop(train_set,model,optimizer,conf_matrix,loss_fn=loss_fn)
@@ -174,8 +132,8 @@ def run(rank, size,model_save_path,checkpoint_every):
             save_data(model_save_path,model,optimizer,epoch_tuples)
         
 
-def run_demo(demo_fn, world_size,model_save_path=DEFAULT_MODEL_SAVE_PATH,checkpoint_every=1):
-    mp.spawn(demo_fn,
+def run_demo(world_size,model_save_path=DEFAULT_MODEL_SAVE_PATH,checkpoint_every=5):
+    mp.spawn(run,
              args=(world_size,model_save_path,checkpoint_every),
              nprocs=world_size,
              join=True)
@@ -187,7 +145,7 @@ if __name__ == "__main__":
     # init_print(rank, size)
 
     # run(rank, size)
-    run_demo(run,4)
+    run_demo(5)
     print("Now I am Done")
 
 

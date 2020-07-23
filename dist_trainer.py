@@ -54,6 +54,7 @@ def class_validation_loop(train_set,model,conf_matrix,loss_fn = F.nll_loss):
     acc = AverageMeter('Acc@1', ':6.2f')
     end = time.time()
     model.eval()
+    print("Len Valset",len(train_set))
     for data, target in train_set:
         data, target = data, target
         output = model(data)
