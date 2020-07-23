@@ -51,15 +51,6 @@ class ConfusionMatrix:
             self.conf_mat[vec[0]][vec[1]]+=1
         
 
-    
-    def print_stats(self):
-        false_negative_map = {
-
-        }
-        for i in self.conf_mat:
-            false_positive_map[i] =
-
-
 
 def get_accuracy(output:torch.Tensor, target:torch.Tensor,conf_matrix:ConfusionMatrix):
     _,pred = output.topk(1,1,True,True) # Convert softmax logits argmax based selection of index to get prediction value

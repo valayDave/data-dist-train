@@ -38,13 +38,12 @@ DATASET_PATH = os.path.join(
 import pickle
 from sklearn.preprocessing import StandardScaler
 
-
-def setup(rank, world_size):
+def setup(rank, world_size,backend='gloo'):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
 
     # initialize the process group
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
 
 class Net(nn.Module):
     """ Network architecture. """
@@ -101,9 +100,9 @@ def save_data(model_save_path,model,optimizer,meta):
     
 
     
-def run(rank, size,model_save_path,checkpoint_every):
+def run(rank, size,dist_backend,model_save_path,checkpoint_every):
     """ Distributed Synchronous SGD Example """
-    setup(rank,world_size=size)
+    setup(rank,world_size=size,backend=dist_backend)
     torch.manual_seed(1234)
     train_set, bsz = get_dataset(DATASET_PATH)
     
@@ -112,7 +111,9 @@ def run(rank, size,model_save_path,checkpoint_every):
     safe_mkdir(model_save_path)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     num_batches = ceil(len(train_set.dataset) / float(bsz))
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     #print("num_batches = ", num_batches)
+    model.to(device)
     epoch_tuples = []
     num_labels = 2
     sync_params(model)
@@ -120,7 +121,7 @@ def run(rank, size,model_save_path,checkpoint_every):
     for epoch in range(100):
         # make sure we have the same parameters for all ranks
         conf_matrix = ConfusionMatrix([i for i in range(num_labels)])
-        train_loop_resp = class_train_loop(train_set,model,optimizer,conf_matrix,loss_fn=loss_fn)
+        train_loop_resp = class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn=loss_fn)
         loss_meter = train_loop_resp[3]
         acc_meter = train_loop_resp[2]
         # val_loop_resp = class_validation_loop(test_set,model,10)
@@ -133,9 +134,10 @@ def run(rank, size,model_save_path,checkpoint_every):
         
 
 def run_demo(world_size,model_save_path=DEFAULT_MODEL_SAVE_PATH,checkpoint_every=5):
-    mp.spawn(run,
-             args=(world_size,model_save_path,checkpoint_every),
-             nprocs=world_size,
+    backend = 'nccl' if torch.cuda.is_available() else 'gloo'
+    mp.spawn(run,\
+             args=(world_size,backend,model_save_path,checkpoint_every),\
+             nprocs=world_size,\
              join=True)
 
 if __name__ == "__main__":

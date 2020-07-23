@@ -48,12 +48,12 @@ DEFAULT_MODEL_SAVE_PATH =\
 gbatch_size = 128
 import pickle
 
-def setup(rank, world_size):
+def setup(rank, world_size,backend='gloo'):
     os.environ['MASTER_ADDR'] = 'localhost'
     os.environ['MASTER_PORT'] = '12355'
 
     # initialize the process group
-    dist.init_process_group("gloo", rank=rank, world_size=world_size)
+    dist.init_process_group(backend, rank=rank, world_size=world_size)
 
 
 def cleanup():
@@ -154,9 +154,9 @@ def save_data(model_save_path,model,optimizer,meta):
     },os.path.join(model_save_path,'model.pth'))
     
     
-def run(rank, size,model_save_path,checkpoint_every):
+def run(rank, size,dist_backend,model_save_path,checkpoint_every):
     """ Distributed Synchronous SGD Example """
-    setup(rank,world_size=size)
+    setup(rank,world_size=size,backend=dist_backend)
     torch.manual_seed(1234)
     train_set, bsz = partition_dataset()
     test_ds = datasets.MNIST('./data',train=False,transform=transforms.Compose([
@@ -172,12 +172,15 @@ def run(rank, size,model_save_path,checkpoint_every):
     num_batches = ceil(len(train_set.dataset) / float(bsz))
     #print("num_batches = ", num_batches)
     epoch_tuples = []
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    #print("num_batches = ", num_batches)
     sync_params(model)
+    model.to(device)
     num_labels=10
     for epoch in range(10):
         # make sure we have the same parameters for all ranks
         conf_matrix = ConfusionMatrix([i for i in range(num_labels)])
-        train_loop_resp = class_train_loop(train_set,model,optimizer,conf_matrix)
+        train_loop_resp = class_train_loop(train_set,model,optimizer,device,conf_matrix)
         loss_meter = train_loop_resp[3]
         acc_meter = train_loop_resp[2]
         val_conf_matrix = ConfusionMatrix([i for i in range(num_labels)])
@@ -191,8 +194,9 @@ def run(rank, size,model_save_path,checkpoint_every):
         
 
 def run_demo(demo_fn, world_size,model_save_path=DEFAULT_MODEL_SAVE_PATH,checkpoint_every=1):
+    backend = 'nccl' if torch.cuda.is_available() else 'gloo'
     mp.spawn(demo_fn,
-             args=(world_size,model_save_path,checkpoint_every),
+             args=(world_size,backend,model_save_path,checkpoint_every),
              nprocs=world_size,
              join=True)
 

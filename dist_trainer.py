@@ -23,7 +23,7 @@ def sync_grads(model):
         dist.all_reduce(param.grad.data)
 
 
-def class_train_loop(train_set,model,optimizer,conf_matrix,loss_fn = F.nll_loss):
+def class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn = F.nll_loss):
     epoch_loss = 0.0
     batch_time = AverageMeter('Time', ':6.3f')
     losses = AverageMeter('Loss', ':.4e')
@@ -31,12 +31,13 @@ def class_train_loop(train_set,model,optimizer,conf_matrix,loss_fn = F.nll_loss)
     end = time.time()
     model.train()
     for data, target in train_set:
-        data, target = data, target
+        data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
         loss = loss_fn(output, target.view(-1,1))
         epoch_loss += loss.data
         loss.backward()
+        
         acc_val = get_accuracy(output.float(),target.float(),conf_matrix)
         losses.update(loss.item(),target.shape[0])
         acc.update(acc_val,target.shape[0])
