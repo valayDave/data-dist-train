@@ -127,7 +127,7 @@ def run(rank, size,dist_backend,model_save_path,checkpoint_every):
     for epoch in range(100):
         # make sure we have the same parameters for all ranks
         conf_matrix = ConfusionMatrix([i for i in range(num_labels)])
-        train_loop_resp = class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn=loss_fn,rank=rank)
+        train_loop_resp = class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn=loss_fn,rank=rank,print_every=1000)
         loss_meter = train_loop_resp[3]
         acc_meter = train_loop_resp[2]
         # val_loop_resp = class_validation_loop(test_set,model,10)
