@@ -112,13 +112,14 @@ def run(rank, size,dist_backend,model_save_path,checkpoint_every):
     train_set, bsz = get_dataset(DATASET_PATH)
     model = Net()
     model = model.double()
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model.to(rank)
     model = DistributedDataParallel(model, device_ids=[rank])
     safe_mkdir(model_save_path)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     num_batches = ceil(len(train_set.dataset) / float(bsz))
     #print("num_batches = ", num_batches)
-    model.to(device)
+    # model.to(device)
+    device = rank
     epoch_tuples = []
     num_labels = 2
     sync_params(model)
