@@ -58,7 +58,7 @@ class Net(nn.Module):
         self.fc2 = nn.Linear(16, 18)
         self.fc3 = nn.Linear(18, 20)
         self.fc4 = nn.Linear(20, 24)
-        self.fc5 = nn.Linear(24, 1)
+        self.fc5 = nn.Softmax(dim=1)
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -66,7 +66,7 @@ class Net(nn.Module):
         x = F.dropout(x, p=0.25)
         x = F.relu(self.fc3(x))
         x = F.relu(self.fc4(x))
-        x = torch.sigmoid(self.fc5(x))
+        x = self.fc5(x)
         return x
 
 
