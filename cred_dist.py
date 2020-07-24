@@ -113,7 +113,7 @@ def run(rank, size,dist_backend,model_save_path,checkpoint_every):
     model = Net()
     model = model.double()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = DistributedDataParallel(model, device_ids=[device])
+    model = DistributedDataParallel(model, device_ids=[rank])
     safe_mkdir(model_save_path)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     num_batches = ceil(len(train_set.dataset) / float(bsz))
