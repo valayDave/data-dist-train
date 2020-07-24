@@ -54,10 +54,10 @@ class Net(nn.Module):
     """ Network architecture. """
     def __init__(self):
         super().__init__()
-        self.fc1 = nn.Linear(30, 16)
-        self.fc2 = nn.Linear(16, 18)
-        self.fc3 = nn.Linear(18, 20)
-        self.fc4 = nn.Linear(20,2)
+        self.fc1 = nn.Linear(30, 100)
+        self.fc2 = nn.Linear(100, 50)
+        self.fc3 = nn.Linear(50, 100)
+        self.fc4 = nn.Linear(100,2)
         self.fc5 = nn.Softmax(dim=1) # Doing softmax so BCE loss will need one hot vector I assume.
 
     def forward(self, x):
