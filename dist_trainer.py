@@ -53,8 +53,8 @@ def class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn = F.nl
         sync_grads(model)
         optimizer.step()
         if curr_index % print_every == 0:
-            if rank is None or rank == 0:
-                print_meters([losses,acc,batch_time],conf_matrix,rank=rank,batch_idx=curr_index)
+            # if rank is None or rank == 0:
+            print_meters([losses,acc,batch_time],conf_matrix,rank=rank,batch_idx=curr_index)
         curr_index+=1
     print("\n\nCompleted Training Loop")
     print_meters([losses,acc,batch_time],conf_matrix)
