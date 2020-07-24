@@ -35,10 +35,12 @@ def class_train_loop(train_set,model,optimizer,device,conf_matrix,loss_fn = F.nl
     curr_index = 0
     print("Train Loop Initiated For Rank %d"%rank)
     for data, target in train_set:
-        data, target = data.to(device,non_blocking=True), target.to(device,non_blocking=True)
+        data, target = data.to(device), target.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = loss_fn(output, target.view(-1,1))
+        target = torch.argmax(target,dim=1).to(device,non_blocking=True)
+        # print(output.shape,target.shape)
+        loss = loss_fn(output, target)
         epoch_loss += loss.data
         loss.backward()
         
@@ -69,7 +71,6 @@ def print_meters(meters:List[AverageMeter],conf_matrix,rank=None,batch_idx=None)
     else:
         if batch_idx is not None:
             print_str = "\nMeter Readings On BatchIdx %d\n"%(batch_idx)
-    print(print_str)
     print(print_str)
     print(meter_vals)
     print('Confusion Matrix')

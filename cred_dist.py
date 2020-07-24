@@ -57,8 +57,8 @@ class Net(nn.Module):
         self.fc1 = nn.Linear(30, 16)
         self.fc2 = nn.Linear(16, 18)
         self.fc3 = nn.Linear(18, 20)
-        self.fc4 = nn.Linear(20, 24)
-        self.fc5 = nn.Softmax(dim=1)
+        self.fc4 = nn.Linear(20,2)
+        self.fc5 = nn.Softmax(dim=1) # Doing softmax so BCE loss will need one hot vector I assume.
 
     def forward(self, x):
         x = F.relu(self.fc1(x))
@@ -76,7 +76,8 @@ def dataset_transform(df):
     sc = StandardScaler()
     X = sc.fit_transform(X)
     partition = torch.from_numpy(X)
-    labels = torch.from_numpy(y).double()
+    labels = torch.from_numpy(df['Class'].astype(str).str.get_dummies().values).double()
+    # print('LABELS',labels.shape)
     part = torch.utils.data.TensorDataset(partition,labels)
     return part
 
@@ -112,8 +113,14 @@ def run(rank, size,dist_backend,model_save_path,checkpoint_every):
     train_set, bsz = get_dataset(DATASET_PATH)
     model = Net()
     model = model.double()
-    model.to(rank)
-    model = DistributedDataParallel(model, device_ids=[rank])
+    if torch.cuda.is_available():
+        model.to(rank)
+        device = rank 
+        model = DistributedDataParallel(model, device_ids=[rank])
+    else : 
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        model.to(device)
+
     safe_mkdir(model_save_path)
     optimizer = optim.Adam(model.parameters(), lr=1e-3)
     num_batches = ceil(len(train_set.dataset) / float(bsz))
@@ -123,7 +130,7 @@ def run(rank, size,dist_backend,model_save_path,checkpoint_every):
     epoch_tuples = []
     num_labels = 2
     sync_params(model)
-    loss_fn = nn.MSELoss()
+    loss_fn = nn.CrossEntropyLoss()
     for epoch in range(100):
         # make sure we have the same parameters for all ranks
         conf_matrix = ConfusionMatrix([i for i in range(num_labels)])
