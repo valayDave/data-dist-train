@@ -22,7 +22,7 @@ class ClassificationTrainer(DistributedTrainer):
         for data, target in train_data_loader:
             
             if self.gpu_enabled:
-                data, target = data.to(self.rank), target.to(self.rank)
+                data, target = data.to(self.rank,non_blocking=True), target.to(self.rank,non_blocking=True)
             
             self.optimizer.zero_grad()
             

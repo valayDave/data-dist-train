@@ -75,6 +75,7 @@ class BaseTrainer:
         self.network_args = network_args
         self.dataset = dataset
         self.training_args = training_args
+        self.gpu_enabled = False
         self.checkpoint_args = training_args.checkpoint_args
         checkpoint_base_path = self.checkpoint_args.path
         exp_date = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
@@ -131,6 +132,7 @@ class BaseTrainer:
     # override in DistTrainer
     def run(self):
         experiment_results = []
+        self.setup_gpu_dp()
         train_data_loader = self.get_train_dataloader()
         for epoch in range(self.training_args.num_epochs):
             results_bundle = self.train_loop(train_data_loader)
@@ -181,8 +183,15 @@ class BaseTrainer:
             bundle_dict,
             os.path.join(model_save_path,checkpoint_name)
         )
-        # with open(os.path.join(model_save_path,checkpoint_name), 'wb') as handle:
-        #     pickle.dump(bundle, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    
+    def setup_gpu_dp(self):
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        if torch.cuda.device_count() > 1:
+            self.neural_network = nn.DataParallel(self.neural_network, device_ids=[rank])
+            self.neural_network.to(device)
+            self.gpu_enabled = True
+        else : 
+            self.neural_network.to(device)
     
     @staticmethod
     def load_bundle_from_disk(path) -> ExperimentBundle:
@@ -198,7 +207,6 @@ class DistributedTrainer(BaseTrainer):
         self.dist_args = dist_args
         super(DistributedTrainer, self).__init__(**kwargs)
         self.rank = None
-        self.gpu_enabled = False
         self.logger = None
 
     def setup(self,rank,world_size):
