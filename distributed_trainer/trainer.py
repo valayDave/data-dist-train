@@ -7,6 +7,8 @@ import torch.multiprocessing as mp
 from typing import List
 import os
 from datetime import datetime
+from collections import OrderedDict
+
 from torch.nn.parallel import DistributedDataParallel
 import dataclasses
 import pickle
@@ -161,8 +163,9 @@ class BaseTrainer:
             dataset_meta = self.dataset.get_metadata()
         except:
             pass
-        model = self.neural_network.to('cpu')
-        model_dict = model.state_dict()
+        model = self.neural_network
+        best_model_state_dict = {k:v.to('cpu') for k, v in model.state_dict().items()}
+        model_dict = OrderedDict(best_model_state_dict)
         opt_dict = self.optimizer.state_dict()
         return ExperimentBundle(
             train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
@@ -302,8 +305,9 @@ class DistributedTrainer(BaseTrainer):
             dataset_meta = self.dataset.get_metadata()
         except:
             pass
-        model = self.neural_network.to('cpu')
-        model_dict = model.state_dict()
+        model = self.neural_network
+        best_model_state_dict = {k:v.to('cpu') for k, v in model.state_dict().items()}
+        model_dict = OrderedDict(best_model_state_dict)
         opt_dict = self.optimizer.state_dict()
         return ExperimentBundle(
             train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
