@@ -330,8 +330,11 @@ class DistributedTrainer(BaseTrainer):
 
     def sync_grads(self):
         """ all_reduce grads from all ranks """
+        size = float(dist.get_world_size())
         for param in self.neural_network.parameters():
-            dist.all_reduce(param.grad.data)
+            dist.all_reduce(param.grad.data, op=dist.reduce_op.SUM)
+            param.grad.data /= size
+        
 
 
 def create_trainer(rank,\

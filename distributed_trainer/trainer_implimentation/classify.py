@@ -36,7 +36,7 @@ class ClassificationTrainer(DistributedTrainer):
             # all_reduce grads
             end = time.time()
 
-            # self.sync_grads()
+            self.sync_grads()
             self.optimizer.step()
             curr_index+=1
             if curr_index in print_checkpoints:
