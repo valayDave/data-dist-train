@@ -164,6 +164,7 @@ class BaseTrainer:
         opt_dict = self.optimizer.state_dict()
         return ExperimentBundle(
             train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
+            train_args = dataclasses.asdict(self.training_args),
             dataset_metadata = dataset_meta,
             model = model_dict,
             optimizer = opt_dict,
@@ -255,8 +256,6 @@ class DistributedTrainer(BaseTrainer):
                             str(epoch)),
                 bundle
             )
-        else:
-            self.logger.info("Not Saving Model %s",str(self.checkpoint_args))
 
     def on_completion_checkpoint_validaiton(self):
         if self.checkpoint_args.save_experiment:
@@ -300,6 +299,7 @@ class DistributedTrainer(BaseTrainer):
         opt_dict = self.optimizer.state_dict()
         return ExperimentBundle(
             train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
+            train_args = dataclasses.asdict(self.training_args),
             dataset_metadata = dataset_meta,
             model = model_dict,
             rank = self.rank,

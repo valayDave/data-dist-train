@@ -108,6 +108,7 @@ class ExperimentResultsBundle:
 class ExperimentBundle:
     train_epoch_results:List[dict] = field(default_factory=lambda:[])
     validation_epoch_results:List[dict] = field(default_factory=lambda:[])
+    train_args:dict=None
     dataset_metadata:dict = None
     created_on:str = field(default_factory=lambda: datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
     model:dict = None
