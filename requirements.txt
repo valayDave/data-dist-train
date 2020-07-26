@@ -4,3 +4,4 @@ pandas
 numpy
 tabulate
 torchvision
+click
