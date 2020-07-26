@@ -4,6 +4,8 @@ from typing import List
 import os 
 import pandas as pd
 import tabulate
+from datetime import datetime
+from dataclasses import dataclass,field
 
 
 #https://stackoverflow.com/questions/35572000/how-can-i-plot-a-confusion-matrix
@@ -52,9 +54,12 @@ class AverageMeter(object):
         return fmtstr.format(**self.__dict__)
 
 class ConfusionMatrix:
-    def __init__(self,labels:List):
+    def __init__(self,labels:List,conf_mat=None):
         self.labels = labels
-        self.conf_mat = np.zeros((len(labels),len(labels))) # [Real][Predicted]
+        # todo Parse to nparray
+        if conf_mat is None:
+            conf_mat = np.zeros((len(labels),len(labels)))
+        self.conf_mat = np.array(conf_mat) # [Real][Predicted]
     
     def update(self,pred:torch.Tensor,target:torch.Tensor):
         """update 
@@ -70,6 +75,17 @@ class ConfusionMatrix:
         df = pd.DataFrame(self.conf_mat,['True_'+str(i) for i in self.labels],['Pred_'+str(i) for i in self.labels])
         return tabulate.tabulate(df,tablefmt='github', headers='keys')
 
+    def to_json(self):
+        return dict(
+            labels = self.labels,
+            conf_mat = self.conf_mat.tolist()
+        )
+
+    @classmethod
+    def from_json(cls,json_object):
+        if 'conf_mat' not in json_object or 'labels' not in json_object:
+            raise Exception('Object Not Compatible')
+        return cls(json_object['labels'],conf_mat=json_object['conf_mat'])
 
 def get_accuracy(output:torch.Tensor, target:torch.Tensor,conf_matrix:ConfusionMatrix):
     with torch.no_grad():
@@ -79,4 +95,50 @@ def get_accuracy(output:torch.Tensor, target:torch.Tensor,conf_matrix:ConfusionM
         num_correct_preds = pred.eq(target.view(1,-1).expand_as(pred)).view(-1).sum(0) # Compare the pred with the target
         return float(num_correct_preds)/output.shape[0]
 
+@dataclass
+class ExperimentResultsBundle:
+    epoch:int=None
+    losses:float=None
+    accuracy:float=None
+    batch_time:float=None
+    confusion_matrix:dict=None
+    created_on:str = field(default_factory=lambda: datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
 
+@dataclass
+class ExperimentBundle:
+    train_epoch_results:List[dict] = field(default_factory=lambda:[])
+    validation_epoch_results:List[dict] = field(default_factory=lambda:[])
+    dataset_metadata:dict = None
+    created_on:str = field(default_factory=lambda: datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
+    model:dict = None
+    optimizer:dict = None
+    rank:int = None
+    distributed:bool=False
+    model_args:dict=None
+    optimizer_args:dict=None
+    loss_fn:str=None
+
+
+@dataclass
+class CheckpointingArgs:
+    path:str=None
+    checkpoint_all_ranks:bool=False
+    checkpoint_rank:int=0
+    checkpoint_frequency:int = 10
+    save_experiment:bool=True
+
+
+@dataclass
+class TrainerArgs:
+    batch_size:int=128
+    shuffle:bool=True
+    num_epochs:int=10
+    checkpoint_args:CheckpointingArgs=None
+
+@dataclass
+class DistTrainerArgs:
+    backend:str='gloo'
+    master_ip:str='127.0.0.1'
+    master_port:str='12355'
+    world_size:int=5
+    

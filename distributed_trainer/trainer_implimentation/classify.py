@@ -36,7 +36,7 @@ class ClassificationTrainer(DistributedTrainer):
             # all_reduce grads
             end = time.time()
 
-            self.sync_grads()
+            # self.sync_grads()
             self.optimizer.step()
             curr_index+=1
             if curr_index in print_checkpoints:
@@ -46,7 +46,13 @@ class ClassificationTrainer(DistributedTrainer):
         self.logger.info("Completed Training Loop")
         self.logger.info('%s %s %s For Rank : %s'%(str(losses),str(acc),str(batch_time),str(self.rank)))
         self.logger.info(self.conf_matrix_str(conf_matrix))
-
+        # self.sync_grads()
+        return ExperimentResultsBundle(
+            losses=losses.avg,
+            accuracy=acc.avg,
+            batch_time=batch_time.avg,
+            confusion_matrix=conf_matrix.to_json()
+        )
 
     def conf_matrix_str(self,conf_matrix):
         log_line = '''
