@@ -21,7 +21,8 @@ from .utils import \
     TrainerArgs,\
     DistTrainerArgs,\
     CheckpointingArgs,\
-    safe_mkdir
+    safe_mkdir,\
+    DistributionArgs
 
 class NetworkArgs:
     """ 
@@ -82,6 +83,7 @@ class BaseTrainer:
         checkpoint_base_path = self.checkpoint_args.path
         exp_date = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
         self.checkpoint_save_path = os.path.join(checkpoint_base_path,self.__class__.__name__+'__'+exp_date)
+        self.logger = None
 
     def get_meters(self):
         batch_time = AverageMeter('Time', ':6.3f')
@@ -121,6 +123,13 @@ class BaseTrainer:
         """
         raise NotImplementedError()
 
+    # override in DistTrainer  
+    def test_loop(self,test_data_loader) -> ExperimentResultsBundle:
+        """train_loop
+        Run the Testing Loop
+        """
+        return None
+
     # override in DistTrainer        
     def get_train_dataloader(self):
         tensor_dataset = self.dataset.get_train_dataset()
@@ -129,35 +138,61 @@ class BaseTrainer:
             batch_size = self.training_args.batch_size,\
             shuffle = self.training_args.shuffle,\
         )
-        return dataloader
-    
+        return data_loader
+
+    # override in DistTrainer
+    def get_test_dataloader(self):
+        tensor_dataset = self.dataset.get_test_dataset()
+        data_loader = torch.utils.data.DataLoader(
+            tensor_dataset,\
+            batch_size = self.training_args.batch_size,\
+            shuffle = self.training_args.shuffle,\
+        )
+        return data_loader
+
+    def setup(self):
+        proc_name = self.__class__.__name__
+        self.logger = create_logger(proc_name)
+
     # override in DistTrainer
     def run(self):
+        self.setup()
         experiment_results = []
+        validation_results = []
+        self.initialise_network()
         self.setup_gpu_dp()
         train_data_loader = self.get_train_dataloader()
+        test_data_loader = self.get_test_dataloader()
+        self.neural_network = self.dataset.model_alterations(self.neural_network) # This needs Fixes. 
         for epoch in range(self.training_args.num_epochs):
             results_bundle = self.train_loop(train_data_loader)
+            validation_bundle = self.test_loop(test_data_loader)
             results_bundle.epoch = epoch
             experiment_results.append(results_bundle)
+            if validation_bundle is not None:
+                validation_bundle.epoch = epoch
+                validation_results.append(validation_bundle)
+
             if self.checkpoint_args.save_experiment:
-                if epoch % self.checkpoint_args.checkpoint_frequency:
-                    bundle = self.create_experiment_bundle(experiment_results)
+                if epoch % self.checkpoint_args.checkpoint_frequency==0:
+                    bundle = self.create_experiment_bundle(experiment_results,validation_results)
                     self.save_checkpoint(
-                        os.path.join(self.checkpoint_save_path,epoch),
+                        os.path.join(self.checkpoint_save_path,str(epoch)),
                         bundle,\
                     )
-        
+
         if self.checkpoint_args.save_experiment:
-            self.logger.info("Created Bundle For Checkpoint ")
-            bundle = self.create_experiment_bundle(experiment_results)
+            self.logger.info("Created Bundle For Checkpoint")
+            bundle = self.create_experiment_bundle(experiment_results,validation_results)
             self.save_checkpoint(
-                os.path.join(self.checkpoint_save_path,epoch),
+                os.path.join(self.checkpoint_save_path,'completeion'),
                 bundle,\
             )
 
     # override in DistTrainer
-    def create_experiment_bundle(self,train_experiment_results:List[ExperimentResultsBundle]) -> ExperimentBundle:
+    def create_experiment_bundle(self,\
+                                train_experiment_results:List[ExperimentResultsBundle],\
+                                validation_results:List[ExperimentResultsBundle]) -> ExperimentBundle:
         dataset_meta = None
         try:
             dataset_meta = self.dataset.get_metadata()
@@ -169,6 +204,7 @@ class BaseTrainer:
         opt_dict = self.optimizer.state_dict()
         return ExperimentBundle(
             train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
+            validation_epoch_results=[dataclasses.asdict(res) for res in validation_results],
             train_args = dataclasses.asdict(self.training_args),
             dataset_metadata = dataset_meta,
             model = model_dict,
@@ -196,11 +232,6 @@ class BaseTrainer:
         else : 
             self.neural_network.to(device)
     
-    @staticmethod
-    def load_bundle_from_disk(path) -> ExperimentBundle:
-        with open(os.path.join(model_save_path,checkpoint_name), 'wb') as handle:
-            bundle = pickle.load(handle)
-        return bundle
         
 class DistributedTrainer(BaseTrainer):
     """DistributedTrainer 
@@ -210,13 +241,13 @@ class DistributedTrainer(BaseTrainer):
         self.dist_args = dist_args
         super(DistributedTrainer, self).__init__(**kwargs)
         self.rank = None
-        self.logger = None
+        
 
     def setup(self,rank,world_size):
-        os.environ['MASTER_ADDR'] = self.dist_args.master_ip
-        os.environ['MASTER_PORT'] = self.dist_args.master_port
         proc_name = self.__class__.__name__+'__'+str(rank)
         self.logger = create_logger(proc_name)
+        os.environ['MASTER_ADDR'] = self.dist_args.master_ip
+        os.environ['MASTER_PORT'] = self.dist_args.master_port
         # initialize the process group
         if self.dist_args.backend == 'gloo':
             dist.init_process_group(self.dist_args.backend, rank=rank, world_size=world_size,init_method='env://'+self.dist_args.master_ip+':'+self.dist_args.master_port)
@@ -241,16 +272,23 @@ class DistributedTrainer(BaseTrainer):
         self.setup_gpu_ddp(rank)
         self.sync_params()
         train_data_loader = self.get_train_dataloader(rank)
+        test_data_loader = self.get_test_dataloader(rank)
         self.neural_network = self.dataset.model_alterations(self.neural_network) # This needs Fixes. 
         self.rank = rank
         experiment_results = []
+        validation_results = []
         for epoch in range(self.training_args.num_epochs):
             self.logger.info("Starting Epoch %d With %s"%(epoch,'GPU' if self.gpu_enabled else 'CPU'))
             results_bundle = self.train_loop(train_data_loader)# Rank can be accessed as a property. 
+            validation_bundle = self.test_loop(test_data_loader)
             results_bundle.epoch = epoch
             experiment_results.append(results_bundle) 
+            if validation_bundle is not None:
+                validation_bundle.epoch = epoch
+                validation_results.append(validation_bundle)
+
             if self.train_loop_checkpoint_validation(epoch):
-                bundle = self.create_experiment_bundle(experiment_results)
+                bundle = self.create_experiment_bundle(experiment_results,validation_results)
                 self.logger.info("Created Bundle For Checkpoint On Rank %s"%str(self.rank))
                 self.save_checkpoint(
                     os.path.join(self.checkpoint_save_path,\
@@ -259,7 +297,7 @@ class DistributedTrainer(BaseTrainer):
                     bundle
                 )       
         if self.on_completion_checkpoint_validaiton():
-            bundle = self.create_experiment_bundle(experiment_results)
+            bundle = self.create_experiment_bundle(experiment_results,validation_results)
             self.logger.info("Created Bundle For Checkpoint On Rank %s For Path %s"%(str(self.rank),self.checkpoint_save_path))
             self.save_checkpoint(
                 os.path.join(self.checkpoint_save_path,\
@@ -298,8 +336,20 @@ class DistributedTrainer(BaseTrainer):
         )
         return data_loader
 
+    def get_test_dataloader(self,rank):
+        tensor_dataset = self.dataset.get_test_dataset(rank)
+        data_loader = torch.utils.data.DataLoader(
+            tensor_dataset,\
+            batch_size = self.training_args.batch_size,\
+            shuffle = self.training_args.shuffle,\
+        )
+        return data_loader
 
-    def create_experiment_bundle(self,train_experiment_results:List[ExperimentResultsBundle]) -> ExperimentBundle:
+
+    def create_experiment_bundle(self,\
+                    train_experiment_results:List[ExperimentResultsBundle],\
+                    validation_results:List[ExperimentResultsBundle]\
+                    ) -> ExperimentBundle:
         dataset_meta = None
         try:
             dataset_meta = self.dataset.get_metadata()
@@ -311,6 +361,7 @@ class DistributedTrainer(BaseTrainer):
         opt_dict = self.optimizer.state_dict()
         return ExperimentBundle(
             train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
+            validation_epoch_results=[dataclasses.asdict(res) for res in validation_results],
             train_args = dataclasses.asdict(self.training_args),
             dataset_metadata = dataset_meta,
             model = model_dict,
@@ -351,6 +402,21 @@ def create_trainer(rank,\
         dist_args=dist_args
     )
     training_prog.run(rank,world_size)
+
+
+def train_monolith(
+        network_args:NetworkArgs,\
+        training_args:TrainerArgs,\
+        dataset:DistributedDataset,\
+        trainer:BaseTrainer
+        ):
+    training_prog = trainer(
+        network_args=network_args,
+        training_args=training_args,
+        dataset=dataset,
+    )
+    training_prog.run()
+
 
 def train_distributed(
         world_size,

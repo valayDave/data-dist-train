@@ -121,6 +121,13 @@ class ExperimentBundle:
 
 
 @dataclass
+class DistributionArgs:
+    sample:int=None
+    uniform_label_distribution:bool=True
+    label_split_values:List = field(default_factory=lambda:[])
+    test_set_portion:float=0.3
+
+@dataclass
 class CheckpointingArgs:
     path:str=None
     checkpoint_all_ranks:bool=False
