@@ -242,7 +242,7 @@ class BaseTrainer:
     def setup_gpu_dp(self):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if torch.cuda.device_count() > 1:
-            self.neural_network = nn.DataParallel(self.neural_network, device_ids=[rank])
+            self.neural_network = nn.DataParallel(self.neural_network)
             self.neural_network.to(device)
             self.gpu_enabled = True
         else : 
