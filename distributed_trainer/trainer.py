@@ -165,6 +165,8 @@ class BaseTrainer:
         train_data_loader = self.get_train_dataloader()
         test_data_loader = self.get_test_dataloader()
         self.neural_network = self.dataset.model_alterations(self.neural_network) # This needs Fixes. 
+        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.rank = device
         for epoch in range(self.training_args.num_epochs):
             results_bundle = self.train_loop(train_data_loader)
             validation_bundle = self.test_loop(test_data_loader)
