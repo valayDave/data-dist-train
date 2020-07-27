@@ -28,7 +28,11 @@ from distributed_trainer import \
 import click
 from utils import *
 
+class FraudDistributedTrainer(DistributedClassificationTrainer):
+    pass
 
+class FraudTrainer(MonolithClassificationTrainer):
+    pass
 
 class FraudData:
     column_values = ['Time', 'V1', 'V2', 'V3', 'V4', 'V5',
@@ -343,7 +347,7 @@ def distributed(\
             master_port=master_port,
             world_size=world_size,
         ),
-        DistributedClassificationTrainer
+        FraudDistributedTrainer
     )
 
 
@@ -394,7 +398,7 @@ def monolith(selected_dataset=DEFAULT_DISTRIBUTION,\
             sample=sample,
             test_split=test_set_split
         ),
-        MonolithClassificationTrainer
+        FraudTrainer
     )
 
 

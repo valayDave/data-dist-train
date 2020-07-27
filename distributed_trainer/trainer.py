@@ -4,7 +4,7 @@ import torch.distributed as dist
 import torch.optim as optim
 from dataclasses import dataclass
 import torch.multiprocessing as mp
-from typing import List
+from typing import List,Tuple
 import os
 from datetime import datetime
 from collections import OrderedDict
@@ -22,7 +22,8 @@ from .utils import \
     DistTrainerArgs,\
     CheckpointingArgs,\
     safe_mkdir,\
-    DistributionArgs
+    DistributionArgs,\
+    ModelBundle
 
 class NetworkArgs:
     """ 
@@ -82,7 +83,7 @@ class BaseTrainer:
         self.checkpoint_args = training_args.checkpoint_args
         checkpoint_base_path = self.checkpoint_args.path
         exp_date = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-        self.checkpoint_save_path = os.path.join(checkpoint_base_path,self.__class__.__name__+'__'+exp_date)
+        self.checkpoint_save_path = os.path.join(checkpoint_base_path,self.__class__.__name__,exp_date)
         self.logger = None
 
     def get_meters(self):
@@ -175,24 +176,26 @@ class BaseTrainer:
 
             if self.checkpoint_args.save_experiment:
                 if epoch % self.checkpoint_args.checkpoint_frequency==0:
-                    bundle = self.create_experiment_bundle(experiment_results,validation_results)
+                    exp_bundle,model_bundle = self.create_experiment_bundle(experiment_results,validation_results)
                     self.save_checkpoint(
                         os.path.join(self.checkpoint_save_path,str(epoch)),
-                        bundle,\
+                        exp_bundle,\
+                        model_bundle
                     )
 
         if self.checkpoint_args.save_experiment:
             self.logger.info("Created Bundle For Checkpoint")
-            bundle = self.create_experiment_bundle(experiment_results,validation_results)
+            exp_bundle,model_bundle = self.create_experiment_bundle(experiment_results,validation_results)
             self.save_checkpoint(
-                os.path.join(self.checkpoint_save_path,'completeion'),
-                bundle,\
+                os.path.join(self.checkpoint_save_path,'completion'),
+                exp_bundle,
+                model_bundle,\
             )
 
     # override in DistTrainer
     def create_experiment_bundle(self,\
                                 train_experiment_results:List[ExperimentResultsBundle],\
-                                validation_results:List[ExperimentResultsBundle]) -> ExperimentBundle:
+                                validation_results:List[ExperimentResultsBundle]) -> Tuple[ExperimentBundle,ModelBundle]:
         dataset_meta = None
         try:
             dataset_meta = self.dataset.get_metadata()
@@ -202,25 +205,38 @@ class BaseTrainer:
         best_model_state_dict = {k:v.to('cpu') for k, v in model.state_dict().items()}
         model_dict = OrderedDict(best_model_state_dict)
         opt_dict = self.optimizer.state_dict()
-        return ExperimentBundle(
-            train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
-            validation_epoch_results=[dataclasses.asdict(res) for res in validation_results],
-            train_args = dataclasses.asdict(self.training_args),
-            dataset_metadata = dataset_meta,
+        model_bundle = ModelBundle(
             model = model_dict,
             optimizer = opt_dict,
             model_args = self.network_args.model_args_dict,
             optimizer_args = self.network_args.optimizer_args_dict,
-            loss_fn = str(self.loss_fn)
+            loss_fn = str(self.loss_fn),
+            train_args = dataclasses.asdict(self.training_args),
         )
+        experiment_bundle = ExperimentBundle(
+            train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
+            validation_epoch_results=[dataclasses.asdict(res) for res in validation_results],
+            train_args = dataclasses.asdict(self.training_args),
+            dataset_metadata = dataset_meta,
+        )
+        return (experiment_bundle,model_bundle)
 
     @staticmethod
-    def save_checkpoint(model_save_path,bundle:ExperimentBundle,checkpoint_name='model_checkpoint.pt'):
+    def save_checkpoint(model_save_path,\
+                        exp_bundle:ExperimentBundle,\
+                        model_bundle:ModelBundle,\
+                        model_checkpoint_name='model_checkpoint.pt',\
+                        meta_checkpoint_name='model_results.pt'):
         safe_mkdir(model_save_path)
-        bundle_dict = dataclasses.asdict(bundle)
+        exp_bundle_dict = dataclasses.asdict(exp_bundle)
+        model_bundle_dict = dataclasses.asdict(model_bundle)
         torch.save(
-            bundle_dict,
-            os.path.join(model_save_path,checkpoint_name)
+            exp_bundle_dict,
+            os.path.join(model_save_path,model_checkpoint_name)
+        )
+        torch.save(
+            model_bundle_dict,
+            os.path.join(model_save_path,meta_checkpoint_name)
         )
     
     def setup_gpu_dp(self):
@@ -288,22 +304,24 @@ class DistributedTrainer(BaseTrainer):
                 validation_results.append(validation_bundle)
 
             if self.train_loop_checkpoint_validation(epoch):
-                bundle = self.create_experiment_bundle(experiment_results,validation_results)
+                exp_bundle,model_bundle = self.create_experiment_bundle(experiment_results,validation_results)
                 self.logger.info("Created Bundle For Checkpoint On Rank %s"%str(self.rank))
                 self.save_checkpoint(
                     os.path.join(self.checkpoint_save_path,\
                                 'Rank-'+str(self.rank),\
                                 str(epoch)),
-                    bundle
+                    exp_bundle,
+                    model_bundle
                 )       
         if self.on_completion_checkpoint_validaiton():
-            bundle = self.create_experiment_bundle(experiment_results,validation_results)
+            exp_bundle,model_bundle = self.create_experiment_bundle(experiment_results,validation_results)
             self.logger.info("Created Bundle For Checkpoint On Rank %s For Path %s"%(str(self.rank),self.checkpoint_save_path))
             self.save_checkpoint(
                 os.path.join(self.checkpoint_save_path,\
                             'Rank-'+str(self.rank),\
                             str(epoch)),
-                bundle
+                exp_bundle,
+                model_bundle
             )
 
     def on_completion_checkpoint_validaiton(self):
@@ -349,7 +367,7 @@ class DistributedTrainer(BaseTrainer):
     def create_experiment_bundle(self,\
                     train_experiment_results:List[ExperimentResultsBundle],\
                     validation_results:List[ExperimentResultsBundle]\
-                    ) -> ExperimentBundle:
+                    ) -> Tuple[ExperimentBundle,ModelBundle]:
         dataset_meta = None
         try:
             dataset_meta = self.dataset.get_metadata()
@@ -359,19 +377,24 @@ class DistributedTrainer(BaseTrainer):
         best_model_state_dict = {k:v.to('cpu') for k, v in model.state_dict().items()}
         model_dict = OrderedDict(best_model_state_dict)
         opt_dict = self.optimizer.state_dict()
-        return ExperimentBundle(
+        model_bundle = ModelBundle(
+            model = model_dict,
+            optimizer = opt_dict,
+            model_args = self.network_args.model_args_dict,
+            optimizer_args = self.network_args.optimizer_args_dict,
+            loss_fn = str(self.loss_fn),
+            train_args = dataclasses.asdict(self.training_args),
+
+        )
+        experimental_bundle = ExperimentBundle(
             train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
             validation_epoch_results=[dataclasses.asdict(res) for res in validation_results],
             train_args = dataclasses.asdict(self.training_args),
             dataset_metadata = dataset_meta,
-            model = model_dict,
             rank = self.rank,
-            distributed=True,
-            optimizer = opt_dict,
-            model_args = self.network_args.model_args_dict,
-            optimizer_args = self.network_args.optimizer_args_dict,
-            loss_fn = str(self.loss_fn)
+            distributed=True
         )
+        return (experimental_bundle,model_bundle)
 
 
     def sync_params(self):
@@ -383,7 +406,7 @@ class DistributedTrainer(BaseTrainer):
         """ all_reduce grads from all ranks """
         size = float(dist.get_world_size())
         for param in self.neural_network.parameters():
-            dist.all_reduce(param.grad.data, op=dist.reduce_op.SUM)
+            dist.all_reduce(param.grad.data, op=torch.distributed.ReduceOp.SUM)
             param.grad.data /= size
         
 

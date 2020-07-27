@@ -111,6 +111,12 @@ class ExperimentBundle:
     train_args:dict=None
     dataset_metadata:dict = None
     created_on:str = field(default_factory=lambda: datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
+    rank:int = None
+    distributed:bool=False
+    
+@dataclass
+class ModelBundle:
+    train_args:dict=None
     model:dict = None
     optimizer:dict = None
     rank:int = None
@@ -118,7 +124,6 @@ class ExperimentBundle:
     model_args:dict=None
     optimizer_args:dict=None
     loss_fn:str=None
-
 
 @dataclass
 class DistributionArgs:
