@@ -25,6 +25,8 @@ from .utils import \
     DistributionArgs,\
     ModelBundle
 
+MODEL_META_FILENAME='model_checkpoint.pt'
+MODEL_FILENAME = 'model_results.pt'
 class NetworkArgs:
     """ 
     Will contain all Network optimisation paramaters and other relaated classes
@@ -168,6 +170,7 @@ class BaseTrainer:
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.rank = device
         for epoch in range(self.training_args.num_epochs):
+            self.logger.info("Starting Epoch %d With %s And Dataset Size %s"%(epoch,'GPU' if self.gpu_enabled else 'CPU',str(len(train_data_loader))))
             results_bundle = self.train_loop(train_data_loader)
             validation_bundle = self.test_loop(test_data_loader)
             results_bundle.epoch = epoch
@@ -227,18 +230,18 @@ class BaseTrainer:
     def save_checkpoint(model_save_path,\
                         exp_bundle:ExperimentBundle,\
                         model_bundle:ModelBundle,\
-                        model_checkpoint_name='model_checkpoint.pt',\
-                        meta_checkpoint_name='model_results.pt'):
+                        model_meta_name=MODEL_META_FILENAME,\
+                        model_checkpoint_name=MODEL_FILENAME):
         safe_mkdir(model_save_path)
         exp_bundle_dict = dataclasses.asdict(exp_bundle)
         model_bundle_dict = dataclasses.asdict(model_bundle)
         torch.save(
             exp_bundle_dict,
-            os.path.join(model_save_path,model_checkpoint_name)
+            os.path.join(model_save_path,model_meta_name)
         )
         torch.save(
             model_bundle_dict,
-            os.path.join(model_save_path,meta_checkpoint_name)
+            os.path.join(model_save_path,model_checkpoint_name)
         )
     
     def setup_gpu_dp(self):
@@ -296,7 +299,7 @@ class DistributedTrainer(BaseTrainer):
         experiment_results = []
         validation_results = []
         for epoch in range(self.training_args.num_epochs):
-            self.logger.info("Starting Epoch %d With %s"%(epoch,'GPU' if self.gpu_enabled else 'CPU'))
+            self.logger.info("Starting Epoch %d With %s And Dataset Size %s"%(epoch,'GPU' if self.gpu_enabled else 'CPU',str(len(train_data_loader))))
             results_bundle = self.train_loop(train_data_loader)# Rank can be accessed as a property. 
             validation_bundle = self.test_loop(test_data_loader)
             results_bundle.epoch = epoch
@@ -311,7 +314,7 @@ class DistributedTrainer(BaseTrainer):
                 self.save_checkpoint(
                     os.path.join(self.checkpoint_save_path,\
                                 'Rank-'+str(self.rank),\
-                                str(epoch)),
+                                'completion'),
                     exp_bundle,
                     model_bundle
                 )       
