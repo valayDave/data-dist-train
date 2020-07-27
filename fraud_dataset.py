@@ -167,7 +167,7 @@ class FraudDataEngine(FraudData):
             split_vals = self.dist_args.label_split_values
             
             if len(split_vals) == 0 or len(split_vals) > self.world_size or len(split_vals) < self.world_size:
-                rand_dist = np.random.randint(0,1000,(self.world_size))
+                rand_dist = np.random.randint(10,1000,(self.world_size))
                 prob_dist = rand_dist/np.sum(rand_dist)
                 prob_dist = prob_dist.tolist()
             else:

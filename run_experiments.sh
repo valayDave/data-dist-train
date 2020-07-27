@@ -1,0 +1,3 @@
+sh uniform_experiments.sh
+sh non_uniform_experiments.sh
+sh monolith_experiments.sh

@@ -29,11 +29,6 @@ from distributed_trainer import \
 from fraud_network import ModelFactory
 
 import click
-class FraudDistributedTrainer(DistributedClassificationTrainer):
-    pass
-
-class FraudTrainer(MonolithClassificationTrainer):
-    pass
 
 FACTORY = ModelFactory()
 DEFAULT_MODEL,DEFAULT_ARGS = FACTORY.default
@@ -46,6 +41,12 @@ DEFAULT_CHECKPOINT = os.path.join(
     'fraud_model'
 )
 
+class FraudDistributedTrainer(DistributedClassificationTrainer):
+    pass
+class FraudTrainer(MonolithClassificationTrainer):
+    pass
+class FraudTrainerArgs(TrainerArgs):
+    pass
 class FraudExpNetworkArgs(NetworkArgs):
     model = DEFAULT_MODEL
     loss_fn = nn.BCELoss
@@ -54,11 +55,6 @@ class FraudExpNetworkArgs(NetworkArgs):
     optimizer_args_dict = dict(
         lr = 1e-3
     )
-
-class FraudTrainerArgs(TrainerArgs):
-    batch_size=128
-    shuffle=True
-    num_epochs=10
 
 @click.group()
 def cli():
@@ -214,7 +210,6 @@ def monolith(batch_size=128,
         ),
         FraudTrainer
     )
-
 
 
 if __name__=='__main__':

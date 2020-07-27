@@ -8,7 +8,7 @@ from ..trainer import *
 from ..utils import *
 
 class DistributedClassificationTrainer(DistributedTrainer):
-    def __init__(self,dataset,print_every=1000,**kwargs):
+    def __init__(self,dataset,print_every=10,**kwargs):
         self.print_every = print_every
         super(DistributedClassificationTrainer, self).__init__(dataset=dataset,**kwargs)
 
