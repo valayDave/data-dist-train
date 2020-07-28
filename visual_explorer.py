@@ -13,8 +13,8 @@ from fraud_network import FraudFFNetwork,FraudCNNModel
 from plotly.subplots import make_subplots
 
 
-MODEL_ROOTPATH = 'remote-model'
-# MODEL_ROOTPATH = 'model_data/fraud_model'
+# MODEL_ROOTPATH = 'remote-model'
+MODEL_ROOTPATH = 'model_data/fraud_model'
 DEFAULT_TRAINER = 'FraudDistributedTrainer'
 
 AVAILABLE_TRAINERS = [
@@ -136,6 +136,16 @@ class DataView:
             go.Scatter(x=validation_results_df['epoch'],y=validation_results_df['losses'],name=bundle.created_on,line_shape='linear'),
         )
         st.plotly_chart(loss_fig)
+    
+    def show_acc(self,bundle:ExperimentBundle):
+        acc_fig = go.Figure()
+        acc_fig.update_layout(title='Validation Accuracy of Model : %s'%bundle.created_on)
+        validation_results_df = pandas.DataFrame(bundle.validation_epoch_results)
+        validation_results_df = validation_results_df[['epoch','accuracy']]
+        acc_fig.add_trace(
+            go.Scatter(x=validation_results_df['epoch'],y=validation_results_df['accuracy'],name=bundle.created_on,line_shape='linear'),
+        )
+        st.plotly_chart(acc_fig)
         
     def display_experiment(self,bundle:ExperimentBundle,model:ModelBundle):
         validation_results_df = pandas.DataFrame(bundle.validation_epoch_results)
@@ -182,6 +192,7 @@ class DataView:
             )
             st.markdown(dataset_meta)
         self.show_losses(bundle)
+        self.show_acc(bundle)
         self.print_conf_matrix(conf_mat)
 
 
