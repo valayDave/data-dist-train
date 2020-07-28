@@ -315,7 +315,7 @@ class DistributedTrainer(BaseTrainer):
                 self.save_checkpoint(
                     os.path.join(self.checkpoint_save_path,\
                                 'Rank-'+str(self.rank),\
-                                'completion'),
+                                str(epoch)),
                     exp_bundle,
                     model_bundle
                 )       
@@ -325,7 +325,7 @@ class DistributedTrainer(BaseTrainer):
             self.save_checkpoint(
                 os.path.join(self.checkpoint_save_path,\
                             'Rank-'+str(self.rank),\
-                            str(epoch)),
+                            'completion'),
                 exp_bundle,
                 model_bundle
             )
