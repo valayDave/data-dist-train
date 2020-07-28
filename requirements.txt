@@ -5,3 +5,5 @@ numpy
 tabulate
 torchvision
 click
+plotly
+streamlit

@@ -124,6 +124,7 @@ class ModelBundle:
     model_args:dict=None
     optimizer_args:dict=None
     loss_fn:str=None
+    model_name:str=None
 
 @dataclass
 class DistributionArgs:

@@ -206,12 +206,11 @@ class BaseTrainer:
             dataset_meta = self.dataset.get_metadata()
         except:
             pass
-        model = self.neural_network
-        best_model_state_dict = {k:v.to('cpu') for k, v in model.state_dict().items()}
-        model_dict = OrderedDict(best_model_state_dict)
+        model_dict = self.neural_network.state_dict() if not self.gpu_enabled else self.neural_network.module.state_dict()
         opt_dict = self.optimizer.state_dict()
         model_bundle = ModelBundle(
             model = model_dict,
+            model_name = self.neural_network.__class__.__name__,
             optimizer = opt_dict,
             model_args = self.network_args.model_args_dict,
             optimizer_args = self.network_args.optimizer_args_dict,
@@ -378,11 +377,12 @@ class DistributedTrainer(BaseTrainer):
             dataset_meta = self.dataset.get_metadata()
         except:
             pass
-        model = self.neural_network
-        best_model_state_dict = {k:v.to('cpu') for k, v in model.state_dict().items()}
-        model_dict = OrderedDict(best_model_state_dict)
+        # self.neural_network.to('cpu')
+        model_dict = self.neural_network.state_dict()
+        # self.neural_network.to(self.rank)
         opt_dict = self.optimizer.state_dict()
         model_bundle = ModelBundle(
+            model_name = self.neural_network.__class__.__name__,
             model = model_dict,
             optimizer = opt_dict,
             model_args = self.network_args.model_args_dict,
