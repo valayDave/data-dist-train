@@ -87,6 +87,7 @@ class BaseTrainer:
         exp_date = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
         self.checkpoint_save_path = os.path.join(checkpoint_base_path,self.__class__.__name__,exp_date)
         self.logger = None
+        self.model_name = None
 
     def get_meters(self):
         batch_time = AverageMeter('Time', ':6.3f')
@@ -115,6 +116,7 @@ class BaseTrainer:
             self.neural_network = self.network_args.model(**self.network_args.model_args_dict)
         else:
             self.neural_network = self.network_args.model()
+        self.model_name = self.neural_network.__class__.__name__
         
         self.optimizer = self.network_args.optimizer(self.neural_network.parameters(),**self.network_args.optimizer_args_dict)
         self.loss_fn = self.network_args.loss_fn()
@@ -210,7 +212,7 @@ class BaseTrainer:
         opt_dict = self.optimizer.state_dict()
         model_bundle = ModelBundle(
             model = model_dict,
-            model_name = self.neural_network.__class__.__name__,
+            model_name = self.model_name,
             optimizer = opt_dict,
             model_args = self.network_args.model_args_dict,
             optimizer_args = self.network_args.optimizer_args_dict,
@@ -384,7 +386,7 @@ class DistributedTrainer(BaseTrainer):
         # self.neural_network.to(self.rank)
         opt_dict = self.optimizer.state_dict()
         model_bundle = ModelBundle(
-            model_name = self.neural_network.__class__.__name__,
+            model_name = self.model_name,
             model = model_dict,
             optimizer = opt_dict,
             model_args = self.network_args.model_args_dict,
