@@ -252,6 +252,8 @@ class BaseTrainer:
         else : 
             self.neural_network.to(device)
     
+    def get_accuracy(self,output:torch.Tensor, target:torch.Tensor,conf_matrix:ConfusionMatrix):
+        raise NotImplementedError()
         
 class DistributedTrainer(BaseTrainer):
     """DistributedTrainer 

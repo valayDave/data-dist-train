@@ -29,7 +29,7 @@ class DistributedClassificationTrainer(DistributedTrainer):
             output = self.neural_network(data)
             loss = self.loss_fn(output, target)
             loss.backward()
-            acc_val = get_accuracy(output.float(),target.float(),conf_matrix)
+            acc_val = self.get_accuracy(output.float(),target.float(),conf_matrix)
             losses.update(float(loss.item()),target.shape[0])
             acc.update(acc_val,target.shape[0])
             batch_time.update(time.time() - end)
@@ -96,7 +96,6 @@ class DistributedClassificationTrainer(DistributedTrainer):
         '''.format(matrix_op=str(conf_matrix).replace('\n','\n\t'),rank=str(self.rank))
         return log_line
 
-
 class MonolithClassificationTrainer(BaseTrainer):
 
     def __init__(self,dataset,print_every=1000,**kwargs):
@@ -120,7 +119,7 @@ class MonolithClassificationTrainer(BaseTrainer):
             output = self.neural_network(data)
             loss = self.loss_fn(output, target)
             loss.backward()
-            acc_val = get_accuracy(output.float(),target.float(),conf_matrix)
+            acc_val = self.get_accuracy(output.float(),target.float(),conf_matrix)
             losses.update(float(loss.item()),target.shape[0])
             acc.update(acc_val,target.shape[0])
             batch_time.update(time.time() - end)

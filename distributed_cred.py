@@ -42,9 +42,24 @@ DEFAULT_CHECKPOINT = os.path.join(
 )
 
 class FraudDistributedTrainer(DistributedClassificationTrainer):
-    pass
+    def get_accuracy(self,output:torch.Tensor, target:torch.Tensor,conf_matrix):
+        with torch.no_grad():
+            pred = torch.round(output) # Convert softmax logits argmax based selection of index to get prediction value
+            conf_matrix.update(pred.long(),target)
+            pred = pred.t() # Transpose the pred value use in comparison
+            num_correct_preds = pred.eq(target.view(1,-1).expand_as(pred)).view(-1).sum(0) # Compare the pred with the target
+            return float(num_correct_preds)/output.shape[0]
+            
 class FraudTrainer(MonolithClassificationTrainer):
-    pass
+    
+    def get_accuracy(self,output:torch.Tensor, target:torch.Tensor,conf_matrix):
+        with torch.no_grad():
+            pred = torch.round(output) # Convert softmax logits argmax based selection of index to get prediction value
+            conf_matrix.update(pred.long(),target)
+            pred = pred.t() # Transpose the pred value use in comparison
+            num_correct_preds = pred.eq(target.view(1,-1).expand_as(pred)).view(-1).sum(0) # Compare the pred with the target
+            return float(num_correct_preds)/output.shape[0]
+
 class FraudTrainerArgs(TrainerArgs):
     pass
 class FraudExpNetworkArgs(NetworkArgs):
