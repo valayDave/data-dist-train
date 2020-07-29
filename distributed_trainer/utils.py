@@ -13,7 +13,7 @@ from dataclasses import dataclass,field
 import logging
 
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
+DATEFORMAT = '%Y-%m-%d-%H-%M-%S'
 
 
 def create_logger(logger_name:str,level=logging.INFO):
@@ -87,6 +87,33 @@ class ConfusionMatrix:
             raise Exception('Object Not Compatible')
         return cls(json_object['labels'],conf_mat=json_object['conf_mat'])
 
+    @staticmethod
+    def precision(label, confusion_matrix):
+        col = confusion_matrix[:, label]
+        return confusion_matrix[label, label] / col.sum()
+
+    @staticmethod        
+    def recall(label, confusion_matrix):
+        row = confusion_matrix[label, :]
+        return confusion_matrix[label, label] / row.sum()
+
+    def precision_macro_average(self):
+        confusion_matrix = self.conf_mat
+        rows, columns = confusion_matrix.shape
+        sum_of_precisions = 0
+        for label in range(rows):
+            sum_of_precisions += self.precision(label, confusion_matrix)
+        return sum_of_precisions / rows
+
+    def recall_macro_average(self):
+        confusion_matrix = self.conf_mat
+        rows, columns = confusion_matrix.shape
+        sum_of_recalls = 0
+        for label in range(columns):
+            sum_of_recalls += self.recall(label, confusion_matrix)
+        return sum_of_recalls / columns
+
+
 def get_accuracy(output:torch.Tensor, target:torch.Tensor,conf_matrix:ConfusionMatrix):
     with torch.no_grad():
         _,pred = output.topk(1,1,True,True) # Convert softmax logits argmax based selection of index to get prediction value
@@ -102,7 +129,7 @@ class ExperimentResultsBundle:
     accuracy:float=None
     batch_time:float=None
     confusion_matrix:dict=None
-    created_on:str = field(default_factory=lambda: datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
+    created_on:str = field(default_factory=lambda: datetime.now().strftime(DATEFORMAT))
 
 @dataclass
 class ExperimentBundle:
@@ -110,9 +137,10 @@ class ExperimentBundle:
     validation_epoch_results:List[dict] = field(default_factory=lambda:[])
     train_args:dict=None
     dataset_metadata:dict = None
-    created_on:str = field(default_factory=lambda: datetime.now().strftime('%Y-%m-%d-%H-%M-%S'))
+    created_on:str = field(default_factory=lambda: datetime.now().strftime(DATEFORMAT))
     rank:int = None
     distributed:bool=False
+    note:str=None
     
 @dataclass
 class ModelBundle:
@@ -132,6 +160,8 @@ class DistributionArgs:
     uniform_label_distribution:bool=True
     label_split_values:List = field(default_factory=lambda:[])
     test_set_portion:float=0.3
+    selected_split:str=None
+
 
 @dataclass
 class CheckpointingArgs:

@@ -180,7 +180,52 @@ class FraudDataEngine(FraudData):
                 write_df = pandas.concat([fraud_sample_df,non_fraud_dfs.pop()])
                 self.write_to_path(write_df,index+1)
 
-    def get_distibuted_dataset(self):
+    def get_distributed_dataset(self):
         return FraudDistributedDataset(self.root_path,self.dist_args.sample,dataclasses.asdict(self.dist_args))
 
 
+class SplitDataEngine(FraudData):
+    def __init__(self,data_path,distirbution_args:DistributionArgs,world_size=5,temp_path=None):
+        self.data_path = data_path
+        self.dist_args = distirbution_args
+        if temp_path is None:
+            self.temp_path = os.path.join(os.path.abspath(data_path),'experiment_data_shards')
+        else:
+            self.temp_path = temp_path
+        self.world_size = world_size
+        safe_mkdir(self.root_path)
+        self.metadata_dict = None
+        self.setup_shards()
+
+    def get_dataframes(self):
+        csv_file_paths = [os.path.join(self.data_path,'output'+str(i+1)+'.csv') for i in range(5)]    
+        dfs = [pandas.read_csv(i) for i in csv_file_paths]
+        return dfs
+
+    @property
+    def root_path(self):
+        path = os.path.join(self.temp_path,str(self.world_size))
+        return path
+
+    def write_to_path(self,df,index):
+        path = os.path.join(self.root_path,'output'+str(index)+'.csv')
+        df.to_csv(path)
+    
+    def setup_shards(self):
+        dfs = self.get_dataframes()
+        mask_vals = [self.create_mask(df,1-self.dist_args.test_set_portion) for df in dfs]
+        train_dfs = [df[mask] for df,mask in zip(dfs,mask_vals)]
+        test_dfs = [df[~mask] for df,mask in zip(dfs,mask_vals)]
+        fraud_dist = []
+        for df in train_dfs:
+            label_dist = df.groupby('Class')['Class'].count().values
+            fraud_dist.append(label_dist[1])
+        label_distribution = (np.array(fraud_dist)/np.sum(fraud_dist)).tolist()
+        self.dist_args.label_split_values = label_distribution
+        test_df = pandas.concat(test_dfs)
+        self.write_to_path(test_df,'-test')
+        for index,df in enumerate(train_dfs):
+            self.write_to_path(df,str(index+1))
+        
+    def get_distributed_dataset(self):
+        return FraudDistributedDataset(self.root_path,self.dist_args.sample,dataclasses.asdict(self.dist_args))

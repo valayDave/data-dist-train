@@ -13,7 +13,8 @@ import json
 from sklearn.preprocessing import StandardScaler
 from fraud_dataset import FraudDataset,\
         FraudDistributedDataset,\
-        FraudDataEngine
+        FraudDataEngine,\
+        SplitDataEngine
 from distributed_trainer import \
     NetworkArgs,\
     safe_mkdir,\
@@ -33,7 +34,7 @@ import click
 FACTORY = ModelFactory()
 DEFAULT_MODEL,DEFAULT_ARGS = FACTORY.default
 DEFAULT_DISTRIBUTION = 'n_5_b_2'
-DATASET_CHOICES = ['n_5_b_2','n_5_b_112','n_5_b_130']
+DATASET_CHOICES = ['n_5_b_2','n_5_b_112']
 BACKEND_CHOICE = ['gloo','nccl']
 DEFAULT_CHECKPOINT = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
@@ -44,12 +45,12 @@ DEFAULT_CHECKPOINT = os.path.join(
 class FraudDistributedTrainer(DistributedClassificationTrainer):
     def get_accuracy(self,output:torch.Tensor, target:torch.Tensor,conf_matrix):
         with torch.no_grad():
-            pred = torch.round(output) # Convert softmax logits argmax based selection of index to get prediction value
+            pred = torch.round(output) 
             conf_matrix.update(pred.long(),target)
             pred = pred.t() # Transpose the pred value use in comparison
             num_correct_preds = pred.eq(target.view(1,-1).expand_as(pred)).view(-1).sum(0) # Compare the pred with the target
             return float(num_correct_preds)/output.shape[0]
-            
+
 class FraudTrainer(MonolithClassificationTrainer):
     
     def get_accuracy(self,output:torch.Tensor, target:torch.Tensor,conf_matrix):
@@ -89,6 +90,8 @@ def cli():
 @click.option('--sample',default=None,type=int,help='Sample N Values from the DistributedDataset')
 @click.option('--world_size',default=5,type=int,help='Number of Distributed Processes for Distributed Training')
 @click.option('--test_set_split',default=0.3,type=float,help='Percentage of the overall Dataset which will be used as a Test Set')
+@click.option('--use_split',default=None,type=click.Choice(DATASET_CHOICES),help='Override The chosen Dataset')
+@click.option('--note',default=None,type=str,help='Some Note to Add while Saving Experiment')
 def distributed(\
                 batch_size=128,
                 epochs=128,
@@ -102,23 +105,44 @@ def distributed(\
                 non_uniform=False,
                 model='CNN',
                 world_size=5,
-                test_set_split=0.3
+                test_set_split=0.3,
+                use_split=None,
+                note=None
                 ):
-    
+    selected_dist = DEFAULT_DISTRIBUTION
+    if use_split is not None:
+        selected_dist = use_split
+
     DATASET_PATH = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
         'dataset-repo',
-        DEFAULT_DISTRIBUTION,
+        selected_dist,
         'dispatcher_folder_credit',
     )
-    data_engine = FraudDataEngine(
-        DATASET_PATH,\
-        DistributionArgs(\
-            sample=sample,\
-            uniform_label_distribution = not non_uniform,\
-            test_set_portion=test_set_split
-        ),\
-        world_size=world_size)
+    data_engine = None
+    if use_split is not None:
+        click.secho("Using Split For Training : %s"%selected_dist,fg='green')
+        world_size = 5
+        data_engine = SplitDataEngine(
+            DATASET_PATH,\
+            DistributionArgs(\
+                sample=sample,\
+                uniform_label_distribution = None,\
+                test_set_portion=test_set_split,
+                selected_split = selected_dist
+            ),\
+            world_size=world_size
+        )
+    else:
+        data_engine = FraudDataEngine(
+            DATASET_PATH,\
+            DistributionArgs(\
+                sample=sample,\
+                uniform_label_distribution = not non_uniform,\
+                test_set_portion=test_set_split
+            ),\
+            world_size=world_size
+        )
 
     nnargs = FraudExpNetworkArgs()
     model_class,args = FACTORY.get_model(model)
@@ -162,14 +186,15 @@ def distributed(\
         world_size,
         nnargs,
         trainer_args,
-        data_engine.get_distibuted_dataset(),
+        data_engine.get_distributed_dataset(),
         DistTrainerArgs(
             backend=backend,
             master_ip=master_ip,
             master_port=master_port,
             world_size=world_size,
         ),
-        FraudDistributedTrainer
+        FraudDistributedTrainer,
+        note
     )
 
 
@@ -182,6 +207,7 @@ def distributed(\
 @click.option('--sample',default=None,type=int,help='Sample N Values from the DistributedDataset')
 @click.option('--model',default='CNN',type=click.Choice(list(FACTORY.models)), help='Neural Network to Run the Experiment')
 @click.option('--test_set_split',default=0.3,type=float,help='Percentage of the overall Dataset which will be used as a Test Set')
+@click.option('--note',default=None,type=str,help='Some Note to Add while Saving Experiment')
 def monolith(batch_size=128,
             epochs=128,
             learning_rate=0.0001,
@@ -189,7 +215,8 @@ def monolith(batch_size=128,
             dont_save=False,
             model='CNN',
             sample=None,
-            test_set_split=0.3):
+            test_set_split=0.3,
+            note=None):
 
     DATASET_PATH = os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -223,7 +250,8 @@ def monolith(batch_size=128,
             sample=sample,
             test_split=test_set_split
         ),
-        FraudTrainer
+        FraudTrainer,
+        note
     )
 
 

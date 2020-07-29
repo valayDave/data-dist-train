@@ -14,6 +14,7 @@ import dataclasses
 import pickle
 from .utils import \
     AverageMeter,\
+    DATEFORMAT,\
     ConfusionMatrix,\
     create_logger,\
     ExperimentResultsBundle,\
@@ -77,14 +78,15 @@ class BaseTrainer:
     dataset :Dataset=None
     train_data = None
     # todo assert datastructures
-    def __init__(self,network_args=NetworkArgs(),training_args = TrainerArgs(),dataset=None):
+    def __init__(self,network_args=NetworkArgs(),training_args = TrainerArgs(),dataset=None,note=None):
         self.network_args = network_args
         self.dataset = dataset
         self.training_args = training_args
         self.gpu_enabled = False
+        self.note = note
         self.checkpoint_args = training_args.checkpoint_args
         checkpoint_base_path = self.checkpoint_args.path
-        exp_date = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+        exp_date = datetime.now().strftime(DATEFORMAT)
         self.checkpoint_save_path = os.path.join(checkpoint_base_path,self.__class__.__name__,exp_date)
         self.logger = None
         self.model_name = None
@@ -220,6 +222,7 @@ class BaseTrainer:
             train_args = dataclasses.asdict(self.training_args),
         )
         experiment_bundle = ExperimentBundle(
+            note=self.note,
             train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
             validation_epoch_results=[dataclasses.asdict(res) for res in validation_results],
             train_args = dataclasses.asdict(self.training_args),
@@ -396,6 +399,7 @@ class DistributedTrainer(BaseTrainer):
 
         )
         experimental_bundle = ExperimentBundle(
+            note = self.note,
             train_epoch_results = [dataclasses.asdict(res) for res in train_experiment_results],
             validation_epoch_results=[dataclasses.asdict(res) for res in validation_results],
             train_args = dataclasses.asdict(self.training_args),
@@ -426,12 +430,14 @@ def create_trainer(rank,\
                     training_args,\
                     dataset,\
                     dist_args,\
-                    trainer):
+                    trainer,
+                    note):
     training_prog = trainer(
         network_args=network_args,
         training_args=training_args,
         dataset=dataset,
-        dist_args=dist_args
+        dist_args=dist_args,
+        note=note
     )
     training_prog.run(rank,world_size)
 
@@ -440,12 +446,14 @@ def train_monolith(
         network_args:NetworkArgs,\
         training_args:TrainerArgs,\
         dataset:DistributedDataset,\
-        trainer:BaseTrainer
+        trainer:BaseTrainer,
+        note:str
         ):
     training_prog = trainer(
         network_args=network_args,
         training_args=training_args,
         dataset=dataset,
+        note = note
     )
     training_prog.run()
 
@@ -456,7 +464,8 @@ def train_distributed(
         training_args:TrainerArgs,\
         dataset:DistributedDataset,\
         dist_args:DistTrainerArgs,
-        trainer:DistributedTrainer       
+        trainer:DistributedTrainer,
+        note:str      
     ):
     
     mp.spawn(create_trainer,\
@@ -466,6 +475,7 @@ def train_distributed(
                 dataset,\
                 dist_args,\
                 trainer,
+                note
                 ),\
             nprocs=world_size,\
             join=True
