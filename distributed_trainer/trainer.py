@@ -308,6 +308,7 @@ class DistributedTrainer(BaseTrainer):
             self.logger.info("Starting Epoch %d With %s And Dataset Size %s"%(epoch,'GPU' if self.gpu_enabled else 'CPU',str(len(train_data_loader))))
             results_bundle = self.train_loop(train_data_loader)# Rank can be accessed as a property. 
             validation_bundle = self.test_loop(test_data_loader)
+            torch.distributed.barrier()
             results_bundle.epoch = epoch
             experiment_results.append(results_bundle) 
             if validation_bundle is not None:
@@ -384,7 +385,6 @@ class DistributedTrainer(BaseTrainer):
             dataset_meta = self.dataset.get_metadata()
         except:
             pass
-        # self.neural_network.to('cpu')
         model_dict = self.neural_network.state_dict()
         # self.neural_network.to(self.rank)
         opt_dict = self.optimizer.state_dict()
