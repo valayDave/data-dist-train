@@ -308,7 +308,8 @@ class DistributedTrainer(BaseTrainer):
             self.logger.info("Starting Epoch %d With %s And Dataset Size %s"%(epoch,'GPU' if self.gpu_enabled else 'CPU',str(len(train_data_loader))))
             results_bundle = self.train_loop(train_data_loader)# Rank can be accessed as a property. 
             validation_bundle = self.test_loop(test_data_loader)
-            torch.distributed.barrier()
+            # if self.rank == 0:
+            #     torch.distributed.barrier()
             results_bundle.epoch = epoch
             experiment_results.append(results_bundle) 
             if validation_bundle is not None:
