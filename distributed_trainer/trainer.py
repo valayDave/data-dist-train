@@ -336,6 +336,7 @@ class DistributedTrainer(BaseTrainer):
                 exp_bundle,
                 model_bundle
             )
+        self.cleanup()
 
     def on_completion_checkpoint_validaiton(self):
         if self.checkpoint_args.save_experiment:
@@ -345,6 +346,8 @@ class DistributedTrainer(BaseTrainer):
                 return True 
         return False
 
+    def cleanup(self):
+        dist.destroy_process_group()
 
     def train_loop_checkpoint_validation(self,epoch):
         if not self.checkpoint_args.save_experiment:
