@@ -81,7 +81,6 @@ class DistributedClassificationTrainer(DistributedTrainer):
             self.logger.info("Completed Testing Loop")
             self.logger.info('%s %s %s For Rank : %s'%(str(losses),str(acc),str(batch_time),str(self.rank)))
             self.logger.info(self.conf_matrix_str(conf_matrix))
-            # self.sync_grads()
             return ExperimentResultsBundle(
                 losses=losses.avg,
                 accuracy=acc.avg,

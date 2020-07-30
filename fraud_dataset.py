@@ -17,6 +17,18 @@ from distributed_trainer import \
     Dataset,\
     DistributionArgs
 
+DEFAULT_DISTRIBUTION = 'n_5_b_2'
+DATASET_CHOICES = ['n_5_b_2','n_5_b_112','n_5_b_90','n_5_b_110','n_5_b_130']
+DEFAULT_DATASET_PATH = os.path.join(os.path.dirname(__file__),'dataset-repo','30-70split')
+DEFAULT_TESTSET = os.path.join(os.path.dirname(__file__),'dataset-repo','Cred_test.csv')
+
+
+def get_train_dataset_path(distribution=DEFAULT_DISTRIBUTION):
+    return os.path.join(DEFAULT_DATASET_PATH,'train',DEFAULT_DISTRIBUTION,'dispatcher_folder_credit')
+
+def get_test_dataset_path():
+    return DEFAULT_TESTSET
+
 
 class FraudData:
     column_values = ['Time', 'V1', 'V2', 'V3', 'V4', 'V5',
@@ -43,11 +55,11 @@ class FraudData:
         return msk
 
 class FraudDataset(Dataset,FraudData):
-    def __init__(self,data_path,sample=None,world_size=5,test_split=0.3):
-        self.data_path = data_path
+    def __init__(self,sample=None,world_size=5):
+        self.train_path = get_train_dataset_path()
+        self.test_path = get_test_dataset_path()
         self.sample = sample
         self.world_size = world_size
-        self.dataset = None
         self.test_split = test_split
         self.train = None
         self.test = None
@@ -59,14 +71,20 @@ class FraudDataset(Dataset,FraudData):
         return self.train
     
     def set_attributes(self):
-        df = self.get_pandas_frame()
-        test_set_portion = 1 - self.test_split
-        df_mask = self.create_mask(df,test_set_portion)
-        test_df = df[~df_mask]
-        train_df = df[df_mask]
+        train_df = self.get_train_df()
+        test_df = self.get_test_df()
         self.train = self.dataset_transform(train_df,sample=self.sample)
         self.test = self.dataset_transform(test_df,sample=self.sample)
     
+    def get_test_df(self):
+        return pandas.read_csv(self.test_path)
+    
+    def get_train_df(self):
+        csv_file_paths = [os.path.join(self.train_path,'output'+str(i+1)+'.csv') for i in range(self.world_size)]
+        dfs = [pandas.read_csv(i) for i in csv_file_paths]
+        df = pandas.concat(dfs)
+        return df
+
     def get_pandas_frame(self):
         csv_file_paths = [os.path.join(self.data_path,'output'+str(i+1)+'.csv') for i in range(self.world_size)]    
         dfs = [pandas.read_csv(i) for i in csv_file_paths]
@@ -87,18 +105,19 @@ class FraudDataset(Dataset,FraudData):
 
 class FraudDistributedDataset(DistributedDataset,FraudData):
     
-    def __init__(self,data_path,sample=None,metadata=None):
-        self.data_path = data_path
+    def __init__(self,train_data_path,test_data_path,sample=None,metadata=None):
+        self.train_data_path = train_data_path
+        self.test_data_path = test_data_path
         self.sample = sample
         self.metadata = metadata
 
     def get_train_dataset(self,rank)->torch.utils.data.TensorDataset:
-        final_path = os.path.join(self.data_path,'output'+str(rank+1)+'.csv')
+        final_path = os.path.join(self.train_data_path,'output'+str(rank+1)+'.csv')
         df = pandas.read_csv(final_path)
         return self.dataset_transform(df,sample=self.sample)
     
     def get_test_dataset(self,rank)->torch.utils.data.TensorDataset:
-        final_path = os.path.join(self.data_path,'output-test.csv')
+        final_path = self.test_data_path
         df = pandas.read_csv(final_path)
         return self.dataset_transform(df,sample=self.sample)
     
@@ -112,6 +131,9 @@ class FraudDistributedDataset(DistributedDataset,FraudData):
         return model.double()
 
 class FraudDataEngine(FraudData):
+    """FraudDataEngine 
+    This is to create custom distributions. So No Test Path. From Train folder make data blocks.
+    """
     def __init__(self,data_path,distirbution_args:DistributionArgs,world_size=5,temp_path=None):
         super().__init__()
         self.data_path = data_path
@@ -181,51 +203,26 @@ class FraudDataEngine(FraudData):
                 self.write_to_path(write_df,index+1)
 
     def get_distributed_dataset(self):
-        return FraudDistributedDataset(self.root_path,self.dist_args.sample,dataclasses.asdict(self.dist_args))
+        return FraudDistributedDataset(self.root_path,os.path.join(self.root_path,'output-test.csv'),self.dist_args.sample,dataclasses.asdict(self.dist_args))
 
 
 class SplitDataEngine(FraudData):
-    def __init__(self,data_path,distirbution_args:DistributionArgs,world_size=5,temp_path=None):
-        self.data_path = data_path
+    """SplitDataEngine 
+    This is to leverage the Already present splits in the `dataset-repo` directory. 
+    """
+    def __init__(self,distirbution_args:DistributionArgs,world_size=5,temp_path=None):
+        self.data_path = DEFAULT_DATASET_PATH
         self.dist_args = distirbution_args
-        if temp_path is None:
-            self.temp_path = os.path.join(os.path.abspath(data_path),'experiment_data_shards')
-        else:
-            self.temp_path = temp_path
         self.world_size = world_size
-        safe_mkdir(self.root_path)
         self.metadata_dict = None
         self.setup_shards()
 
-    def get_dataframes(self):
-        csv_file_paths = [os.path.join(self.data_path,'output'+str(i+1)+'.csv') for i in range(5)]    
-        dfs = [pandas.read_csv(i) for i in csv_file_paths]
-        return dfs
-
-    @property
-    def root_path(self):
-        path = os.path.join(self.temp_path,str(self.world_size))
-        return path
-
-    def write_to_path(self,df,index):
-        path = os.path.join(self.root_path,'output'+str(index)+'.csv')
-        df.to_csv(path)
-    
     def setup_shards(self):
-        dfs = self.get_dataframes()
-        mask_vals = [self.create_mask(df,1-self.dist_args.test_set_portion) for df in dfs]
-        train_dfs = [df[mask] for df,mask in zip(dfs,mask_vals)]
-        test_dfs = [df[~mask] for df,mask in zip(dfs,mask_vals)]
-        fraud_dist = []
-        for df in train_dfs:
-            label_dist = df.groupby('Class')['Class'].count().values
-            fraud_dist.append(label_dist[1])
-        label_distribution = (np.array(fraud_dist)/np.sum(fraud_dist)).tolist()
-        self.dist_args.label_split_values = label_distribution
-        test_df = pandas.concat(test_dfs)
-        self.write_to_path(test_df,'-test')
-        for index,df in enumerate(train_dfs):
-            self.write_to_path(df,str(index+1))
+        if self.dist_args.selected_split is None or self.dist_args.selected_split not in DATASET_CHOICES:
+            print("No Distribution Has been Selected So Using Default : %s"%DEFAULT_DISTRIBUTION)
+            self.dist_args.selected_split = DEFAULT_DISTRIBUTION
+        self.train_path = os.path.join(self.data_path,'train',self.dist_args.selected_split,'dispatcher_folder_credit')
+        self.test_path = os.path.join(self.data_path,'Cred_test.csv')
         
     def get_distributed_dataset(self):
-        return FraudDistributedDataset(self.root_path,self.dist_args.sample,dataclasses.asdict(self.dist_args))
+        return FraudDistributedDataset(self.train_path,self.test_path,self.dist_args.sample,dataclasses.asdict(self.dist_args))

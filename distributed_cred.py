@@ -14,7 +14,12 @@ from sklearn.preprocessing import StandardScaler
 from fraud_dataset import FraudDataset,\
         FraudDistributedDataset,\
         FraudDataEngine,\
-        SplitDataEngine
+        SplitDataEngine,\
+        DATASET_CHOICES,\
+        DEFAULT_DISTRIBUTION,\
+        DEFAULT_DATASET_PATH,\
+        get_train_dataset_path\
+
 from distributed_trainer import \
     NetworkArgs,\
     safe_mkdir,\
@@ -33,8 +38,6 @@ import click
 
 FACTORY = ModelFactory()
 DEFAULT_MODEL,DEFAULT_ARGS = FACTORY.default
-DEFAULT_DISTRIBUTION = 'n_5_b_2'
-DATASET_CHOICES = ['n_5_b_2','n_5_b_112']
 BACKEND_CHOICE = ['gloo','nccl']
 DEFAULT_CHECKPOINT = os.path.join(
     os.path.abspath(os.path.dirname(__file__)),
@@ -112,19 +115,11 @@ def distributed(\
     selected_dist = DEFAULT_DISTRIBUTION
     if use_split is not None:
         selected_dist = use_split
-
-    DATASET_PATH = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        'dataset-repo',
-        selected_dist,
-        'dispatcher_folder_credit',
-    )
     data_engine = None
     if use_split is not None:
         click.secho("Using Split For Training : %s"%selected_dist,fg='green')
         world_size = 5
         data_engine = SplitDataEngine(
-            DATASET_PATH,\
             DistributionArgs(\
                 sample=sample,\
                 uniform_label_distribution = None,\
@@ -134,8 +129,10 @@ def distributed(\
             world_size=world_size
         )
     else:
+        # Below line little hacky. But can be updated later with the dataset. 
+        train_dataset_path = get_train_dataset_path(distribution=selected_dist)
         data_engine = FraudDataEngine(
-            DATASET_PATH,\
+            train_dataset_path,\
             DistributionArgs(\
                 sample=sample,\
                 uniform_label_distribution = not non_uniform,\
@@ -151,14 +148,13 @@ def distributed(\
     nnargs.optimizer_args_dict = {
         'lr': learning_rate
     }
-    trainer_args =FraudTrainerArgs(
+    trainer_args = FraudTrainerArgs(
             batch_size=batch_size,
             shuffle=True,
             num_epochs=epochs,
             checkpoint_args = CheckpointingArgs(
                 path = checkpoint_dir,
                 save_experiment=not dont_save,
-
         )
     )
     json_str = json.dumps(dataclasses.asdict(data_engine.dist_args),indent=4)
@@ -206,7 +202,6 @@ def distributed(\
 @click.option('--dont_save',default=False,is_flag=True,help='Flag to specify weather to Save Results of The Experiment')
 @click.option('--sample',default=None,type=int,help='Sample N Values from the DistributedDataset')
 @click.option('--model',default='CNN',type=click.Choice(list(FACTORY.models)), help='Neural Network to Run the Experiment')
-@click.option('--test_set_split',default=0.3,type=float,help='Percentage of the overall Dataset which will be used as a Test Set')
 @click.option('--note',default=None,type=str,help='Some Note to Add while Saving Experiment')
 def monolith(batch_size=128,
             epochs=128,
@@ -217,13 +212,6 @@ def monolith(batch_size=128,
             sample=None,
             test_set_split=0.3,
             note=None):
-
-    DATASET_PATH = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)),
-        'dataset-repo',
-        DEFAULT_DISTRIBUTION,
-        'dispatcher_folder_credit',
-    )
 
     nnargs = FraudExpNetworkArgs()
     model_class,args = FACTORY.get_model(model)
@@ -246,9 +234,7 @@ def monolith(batch_size=128,
         nnargs,
         trainer_args,
         FraudDataset(
-            DATASET_PATH,
             sample=sample,
-            test_split=test_set_split
         ),
         FraudTrainer,
         note

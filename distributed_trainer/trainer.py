@@ -8,7 +8,6 @@ from typing import List,Tuple
 import os
 from datetime import datetime
 from collections import OrderedDict
-
 from torch.nn.parallel import DistributedDataParallel
 import dataclasses
 import pickle
@@ -347,6 +346,7 @@ class DistributedTrainer(BaseTrainer):
         return False
 
     def cleanup(self):
+        torch.distributed.barrier()
         dist.destroy_process_group()
 
     def train_loop_checkpoint_validation(self,epoch):
