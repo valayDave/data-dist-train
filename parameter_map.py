@@ -2,6 +2,7 @@ from dataclasses import dataclass,field
 from dataclasses import asdict as dataclass_to_dict
 from typing import List
 import itertools
+import random
 
 
 @dataclass
@@ -9,11 +10,14 @@ class Parameter:
     name:str
     values:List = field(default_factory=lambda:[])
     quoted:bool=False
+    random_value:bool=False
 
     def as_arg(self):
         return '--'+self.name
     
     def parse_value(self,value):
+        if self.random_value:
+            value = random.randint(10000,40000)
         if self.quoted:
             value = "\""+value+"\""
         return value
@@ -104,7 +108,7 @@ if __name__ == "__main__":
         ),
         Parameter(
             name='backend',
-            values=['gloo'] 
+            values=['nccl'] 
         ),
         Parameter(
             name='master_ip',
@@ -112,6 +116,7 @@ if __name__ == "__main__":
         ),
         Parameter(
             name='master_port',
+            random_value=True,
             values=['12355'] 
         ),
         Parameter(
