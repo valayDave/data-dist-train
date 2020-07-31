@@ -4,6 +4,7 @@ from typing import List
 import itertools
 import random
 
+# https://discuss.pytorch.org/t/multiprocessing-failed-with-torch-distributed-launch-module/33056/21
 
 @dataclass
 class Parameter:
@@ -129,7 +130,7 @@ if __name__ == "__main__":
         ),
         Parameter(
             name='use_split',
-            values=['n_5_b_2','n_5_b_112','n_5_b_90','n_5_b_110','n_5_b_130']
+            values=['n_5_b_2','n_5_b_90','n_5_b_110','n_5_b_130']
         ),
         Parameter(
             name='note',
