@@ -117,7 +117,7 @@ if __name__ == "__main__":
         ),
         Parameter(
             name='master_port',
-            random_value=True,
+            random_value=True, # Port RANDOMIZATION COULD BE REALLY USEFUL
             values=['12355'] 
         ),
         Parameter(
@@ -139,7 +139,7 @@ if __name__ == "__main__":
         ),
     ]
     st = ScriptInput(
-        base_command = 'python distributed_cred.py distributed',
+        base_command = 'python -u ./distributed_cred.py distributed',
         param_list = param_list_dist
     )
 
