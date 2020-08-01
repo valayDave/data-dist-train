@@ -109,7 +109,7 @@ def get_experiments(model_root=MODEL_ROOTPATH,trainer=DEFAULT_TRAINER,is_distrib
         for file in glob.glob(load_path, recursive = True):
             if MODEL_FILENAME in file:
                 if load_model:
-                    main_data = torch.load(file,map_location=torch.device('cpu'))
+                    main_data = torch.load(file)
                     del main_data['model']
                     del main_data['optimizer']
                     return_data['model'] = ModelBundle(**main_data)
