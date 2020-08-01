@@ -97,7 +97,7 @@ class DistributedClassificationTrainer(DistributedTrainer):
 
 class MonolithClassificationTrainer(BaseTrainer):
 
-    def __init__(self,dataset,print_every=1000,**kwargs):
+    def __init__(self,dataset,print_every=10,**kwargs):
         self.print_every = print_every
         super(MonolithClassificationTrainer, self).__init__(dataset=dataset,**kwargs)
 

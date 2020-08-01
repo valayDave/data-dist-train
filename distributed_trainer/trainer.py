@@ -325,6 +325,8 @@ class DistributedTrainer(BaseTrainer):
                     exp_bundle,
                     model_bundle
                 )       
+        
+        torch.distributed.barrier()
         if self.on_completion_checkpoint_validaiton():
             exp_bundle,model_bundle = self.create_experiment_bundle(experiment_results,validation_results)
             self.logger.info("Created Bundle For Checkpoint On Rank %s For Path %s"%(str(self.rank),self.checkpoint_save_path))
