@@ -418,9 +418,11 @@ class ResultsView:
                 selected_selected_splits)
 
 def run_app():
-    # st.sidebar.multiselect('View Options',)
-    # DataView()
-    ResultsView()
+    selected_view = st.sidebar.selectbox('View Options',VIEW_OPTIONS)
+    if selected_view == 'Data View':
+        DataView()
+    else:
+        ResultsView()
 
 if __name__=="__main__":
     run_app()
