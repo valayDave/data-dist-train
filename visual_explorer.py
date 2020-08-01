@@ -107,16 +107,20 @@ def get_experiments(model_root=MODEL_ROOTPATH,trainer=DEFAULT_TRAINER,is_distrib
         load_path = os.path.join(experiment_path,checkpoint,'**','*.pt')
         
         for file in glob.glob(load_path, recursive = True):
-            if MODEL_FILENAME in file:
-                if load_model:
-                    main_data = torch.load(file)
-                    del main_data['model']
-                    del main_data['optimizer']
-                    return_data['model'] = ModelBundle(**main_data)
+            try:
+                if MODEL_FILENAME in file:
+                    if load_model:
+                        main_data = torch.load(file,map_location=torch.device('cpu'))
+                        del main_data['model']
+                        del main_data['optimizer']
+                        return_data['model'] = ModelBundle(**main_data)
 
-            if MODEL_META_FILENAME in file:
-                if load_meta:
-                    return_data['meta'] = ExperimentBundle(**torch.load(file))
+                if MODEL_META_FILENAME in file:
+                    if load_meta:
+                        return_data['meta'] = ExperimentBundle(**torch.load(file))
+                        
+            except:
+                pass
         
         return_data['path'] = load_path
         collected_experiments.append(return_data)
