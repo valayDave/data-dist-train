@@ -18,7 +18,7 @@ from distributed_trainer import \
     DistributionArgs
 
 DEFAULT_DISTRIBUTION = 'n_5_b_2'
-DATASET_CHOICES = ['n_5_b_2','n_5_b_90','n_5_b_110','n_5_b_130']
+DATASET_CHOICES = ['n_5_b_2','n_5_b_90','n_5_b_110','n_5_b_130','n_5_b_70']
 DEFAULT_DATASET_PATH = os.path.join(os.path.dirname(__file__),'dataset-repo','30-70split')
 DEFAULT_TESTSET = os.path.join(os.path.dirname(__file__),'dataset-repo','Cred_test.csv')
 

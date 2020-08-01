@@ -35,3 +35,7 @@ python distributed_cred.py monolith --help
 ```
 streamlit run visual_explorer.py
 ```
+
+
+## Import Point While Training 
+1. Batchsize Will influence the number of minibatches of distributed workers. Gradient syncing happens for works so imbalanced minibatches can cause a deadlock for gradient syncing due to Pytorch's DistributedDataParallel Implementation

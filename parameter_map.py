@@ -66,7 +66,7 @@ class ParameterMap:
             param_bins.append(curr_bin)
         
         self.parameter_combination = self.get_key_map(param_bins)
-
+        random.shuffle(self.parameter_combination)
         self.command_list = []
         for combination in self.parameter_combination:
             static_command = script_input.base_command + SPACE + ' '.join([
@@ -101,7 +101,7 @@ if __name__ == "__main__":
     param_list_dist = [
         Parameter(
             name='batch_size',
-            values=[2**(i+7) for i in range(7)] # [128, 256, 512, 1024, 2048, 4096] 
+            values=[2**(i+8) for i in range(7)] # [256, 512, 1024, 2048, 4096] 
         ),
         Parameter(
             name='epochs',
@@ -130,7 +130,7 @@ if __name__ == "__main__":
         ),
         Parameter(
             name='use_split',
-            values=['n_5_b_2','n_5_b_90','n_5_b_110','n_5_b_130']
+            values=['n_5_b_2','n_5_b_90','n_5_b_110','n_5_b_130','n_5_b_70']
         ),
         Parameter(
             name='note',
