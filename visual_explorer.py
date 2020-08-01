@@ -118,11 +118,12 @@ def get_experiments(model_root=MODEL_ROOTPATH,trainer=DEFAULT_TRAINER,is_distrib
                 if MODEL_META_FILENAME in file:
                     if load_meta:
                         return_data['meta'] = ExperimentBundle(**torch.load(file))
-                        
-                return_data['path'] = load_path
-                collected_experiments.append(return_data)
             except:
                 pass
+        return_data['path'] = load_path
+        if return_data['meta'] is None or return_data['model'] is None:
+            continue
+        collected_experiments.append(return_data)
         
     return collected_experiments
 
