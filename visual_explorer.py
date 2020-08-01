@@ -119,11 +119,11 @@ def get_experiments(model_root=MODEL_ROOTPATH,trainer=DEFAULT_TRAINER,is_distrib
                     if load_meta:
                         return_data['meta'] = ExperimentBundle(**torch.load(file))
                         
+                return_data['path'] = load_path
+                collected_experiments.append(return_data)
             except:
                 pass
         
-        return_data['path'] = load_path
-        collected_experiments.append(return_data)
     return collected_experiments
 
 def get_experiment(
