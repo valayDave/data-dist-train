@@ -21,8 +21,7 @@ class Parameter:
             value = random.randint(10000,40000)
         if self.quoted:
             value = "\""+value+"\""
-        return value
-    
+        return value   
 
 @dataclass
 class ScriptInput:
@@ -68,10 +67,15 @@ class ParameterMap:
         self.parameter_combination = self.get_key_map(param_bins)
         random.shuffle(self.parameter_combination)
         self.command_list = []
+        self.object_dicts = []
         for combination in self.parameter_combination:
             static_command = script_input.base_command + SPACE + ' '.join([
                                 ARG_SEPERATOR.join([self.construct_arg(arg,arg.values[0]) for arg in self.static_params+list(combination)])
                                 ])
+            object_dict = {}
+            for arg in self.static_params+list(combination):
+                object_dict.update({arg.name:arg.values[0]})
+            self.object_dicts.append(object_dict)
             self.command_list.append(static_command)
         
     def to_shell_file(self,file_path):

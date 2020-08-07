@@ -4,6 +4,7 @@ import torch.distributed as dist
 import torch.optim as optim
 from dataclasses import dataclass
 import torch.multiprocessing as mp
+import multiprocessing
 from typing import List,Tuple
 import os
 from datetime import datetime
@@ -25,6 +26,10 @@ from .utils import \
     DistributionArgs,\
     ModelBundle
 
+from .dataset import\
+         Dataset,\
+        DistributedDataset
+
 MODEL_META_FILENAME='model_checkpoint.pt'
 MODEL_FILENAME = 'model_results.pt'
 class NetworkArgs:
@@ -39,34 +44,6 @@ class NetworkArgs:
     model = None
     loss_fn = None
     model_args_dict=None
-
-class Dataset:
-    """
-    Base class which needs to be implemeted for working with the DistributedTrainer Process. 
-    """    
-    def get_train_dataset(self)->torch.utils.data.TensorDataset:
-        raise NotImplementedError()
-    
-    def get_test_dataset(self)->torch.utils.data.TensorDataset:
-        raise NotImplementedError()
-
-    def get_metadata(self)->dict: # To help get Quick dataset Related Metadata.
-        raise NotImplementedError()
-
-    def get_labels(self)->List:
-        raise NotImplementedError()
-
-    def model_alterations(self,model): # This is to change the model configurations acc to dataset. 
-        return model
-
-class DistributedDataset(Dataset):
-    
-    def get_train_dataset(self,rank)->torch.utils.data.TensorDataset:
-        raise NotImplementedError()
-    
-    def get_test_dataset(self,rank)->torch.utils.data.TensorDataset:
-        raise NotImplementedError()
-
 
 class BaseTrainer:
     """ 
@@ -247,6 +224,23 @@ class BaseTrainer:
             os.path.join(model_save_path,model_checkpoint_name)
         )
     
+    @staticmethod
+    def create_bundle_from_checkpoint(
+                        model_save_path,
+                        model_meta_name=MODEL_META_FILENAME,\
+                        model_checkpoint_name=MODEL_FILENAME,\
+                        rank='Rank-0',\
+                        with_model=False,):
+        model_save_path = os.path.join(model_save_path,rank)
+        model_save_path = os.path.join(model_save_path,max(os.listdir(model_save_path)))
+        model_data = torch.load(os.path.join(model_save_path,model_checkpoint_name),map_location=torch.device('cpu'))
+        if not with_model:
+            del model_data['model']
+            del model_data['optimizer']
+        model_bundle = ModelBundle(**model_data)
+        exp_bundle = ExperimentBundle(**torch.load(os.path.join(model_save_path,model_meta_name)))
+        return exp_bundle,model_bundle
+
     def setup_gpu_dp(self):
         device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         if torch.cuda.device_count() > 1:
@@ -268,7 +262,6 @@ class DistributedTrainer(BaseTrainer):
         super(DistributedTrainer, self).__init__(**kwargs)
         self.rank = None
         
-
     def setup(self,rank,world_size):
         proc_name = self.__class__.__name__+'__'+str(rank)
         self.logger = create_logger(proc_name)
@@ -337,6 +330,7 @@ class DistributedTrainer(BaseTrainer):
                 exp_bundle,
                 model_bundle
             )
+        
         self.cleanup()
 
     def on_completion_checkpoint_validaiton(self):
@@ -427,7 +421,10 @@ class DistributedTrainer(BaseTrainer):
         for param in self.neural_network.parameters():
             dist.all_reduce(param.grad.data, op=torch.distributed.ReduceOp.SUM)
             param.grad.data /= size
-        
+
+    def average_out_params(self):
+        pass
+
 
 
 def create_trainer(rank,\
@@ -437,7 +434,8 @@ def create_trainer(rank,\
                     dataset,\
                     dist_args,\
                     trainer,
-                    note):
+                    note,\
+                    namespace):
     training_prog = trainer(
         network_args=network_args,
         training_args=training_args,
@@ -446,6 +444,11 @@ def create_trainer(rank,\
         note=note
     )
     training_prog.run(rank,world_size)
+    if rank == 0 and namespace is not None:
+        experimental_bundle,model_bundle = trainer.create_bundle_from_checkpoint(training_prog.checkpoint_save_path)
+        namespace.model_bundle = dataclasses.asdict(model_bundle)
+        namespace.experiment_bundle = dataclasses.asdict(experimental_bundle)
+
 
 
 def train_monolith(
@@ -473,7 +476,10 @@ def train_distributed(
         trainer:DistributedTrainer,
         note:str      
     ):
-    
+    manager = multiprocessing.Manager()
+    namespace = manager.Namespace()
+    namespace.model_bundle = manager.dict()
+    namespace.experiment_bundle = manager.dict()
     mp.spawn(create_trainer,\
             args=(world_size,\
                 network_args,\
@@ -481,8 +487,11 @@ def train_distributed(
                 dataset,\
                 dist_args,\
                 trainer,
-                note
+                note,\
+                namespace,\
                 ),\
             nprocs=world_size,\
             join=True
             )
+    print("Processes Have Joined")
+    return namespace.experiment_bundle,namespace.model_bundle

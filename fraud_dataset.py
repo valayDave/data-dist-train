@@ -1,15 +1,12 @@
 import os
 import torch
+from torch.utils.data import TensorDataset
 import pandas
-import time
-import torch.nn as nn
-import os
-import torch.optim as optim
 import numpy as np
-import torch.nn.functional as F
 from dataclasses import dataclass
 import dataclasses 
 import json
+import random
 from sklearn.preprocessing import StandardScaler
 from distributed_trainer import \
     safe_mkdir,\
@@ -17,18 +14,55 @@ from distributed_trainer import \
     Dataset,\
     DistributionArgs
 
-DEFAULT_DISTRIBUTION = 'n_5_b_2'
-DATASET_CHOICES = ['n_5_b_2','n_5_b_90','n_5_b_110','n_5_b_130','n_5_b_70']
-DEFAULT_DATASET_PATH = os.path.join(os.path.dirname(__file__),'dataset-repo','30-70split')
-DEFAULT_TESTSET = os.path.join(os.path.dirname(__file__),'dataset-repo','Cred_test.csv')
+from distributed_trainer.data_dispatcher import \
+    Dispatcher,\
+    DispatcherControlParams,\
+    BlockDistributedDataset,\
+    DataBlock
 
+BASE_PATH = os.path.join(os.path.dirname(__file__),'dataset-repo')
+TRAIN_PATH = os.path.join(BASE_PATH,'Cred_train.csv')
+TEST_PATH = os.path.join(BASE_PATH,'Cred_test.csv')
 
-def get_train_dataset_path(distribution=DEFAULT_DISTRIBUTION):
-    return os.path.join(DEFAULT_DATASET_PATH,'train',DEFAULT_DISTRIBUTION,'dispatcher_folder_credit')
+def get_train_dataset_path():
+    return TRAIN_PATH
 
 def get_test_dataset_path():
-    return DEFAULT_TESTSET
+    return TEST_PATH
 
+
+
+class FraudBlockDataset(BlockDistributedDataset):
+    def __init__(self, train_dataset, blocks, test_dataset=None, metadata=None):
+        BlockDistributedDataset.__init__(self,train_dataset, blocks, test_dataset=test_dataset, metadata=metadata)
+
+    def transform_from_block(self,dataset,block:DataBlock):
+        selected_items = [dataset[i] for i in block.data_item_indexes]
+        return self.transform(selected_items)
+
+    @staticmethod
+    def transform(dataset):
+        features = []
+        labels = []
+        for tensor,value in dataset:
+            features.append(tensor)
+            labels.append(value)
+        features = torch.stack(features).double()
+        labels = torch.Tensor(labels).view(-1,1).double()
+        return TensorDataset(features,labels)
+
+    def get_train_dataset(self, rank):
+        selected_block = self.blocks[rank]
+        return self.transform_from_block(self.train_dataset,selected_block)
+    
+    def get_test_dataset(self,rank):
+        return self.transform(self.test_dataset)
+
+    def get_labels(self):
+        return [0,1]
+
+    def model_alterations(self,model):
+        return model.double()
 
 class FraudData:
     column_values = ['Time', 'V1', 'V2', 'V3', 'V4', 'V5',
@@ -55,12 +89,10 @@ class FraudData:
         return msk
 
 class FraudDataset(Dataset,FraudData):
-    def __init__(self,sample=None,world_size=5):
+    def __init__(self,sample=None):
         self.train_path = get_train_dataset_path()
         self.test_path = get_test_dataset_path()
         self.sample = sample
-        self.world_size = world_size
-        self.test_split = test_split
         self.train = None
         self.test = None
 
@@ -80,15 +112,7 @@ class FraudDataset(Dataset,FraudData):
         return pandas.read_csv(self.test_path)
     
     def get_train_df(self):
-        csv_file_paths = [os.path.join(self.train_path,'output'+str(i+1)+'.csv') for i in range(self.world_size)]
-        dfs = [pandas.read_csv(i) for i in csv_file_paths]
-        df = pandas.concat(dfs)
-        return df
-
-    def get_pandas_frame(self):
-        csv_file_paths = [os.path.join(self.data_path,'output'+str(i+1)+'.csv') for i in range(self.world_size)]    
-        dfs = [pandas.read_csv(i) for i in csv_file_paths]
-        df = pandas.concat(dfs)
+        df = pandas.read_csv(self.train_path)
         return df
 
     def get_test_dataset(self)->torch.utils.data.TensorDataset:
@@ -103,126 +127,20 @@ class FraudDataset(Dataset,FraudData):
     def model_alterations(self,model):
         return model.double()
 
-class FraudDistributedDataset(DistributedDataset,FraudData):
-    
-    def __init__(self,train_data_path,test_data_path,sample=None,metadata=None):
-        self.train_data_path = train_data_path
-        self.test_data_path = test_data_path
-        self.sample = sample
-        self.metadata = metadata
 
-    def get_train_dataset(self,rank)->torch.utils.data.TensorDataset:
-        final_path = os.path.join(self.train_data_path,'output'+str(rank+1)+'.csv')
-        df = pandas.read_csv(final_path)
-        return self.dataset_transform(df,sample=self.sample)
-    
-    def get_test_dataset(self,rank)->torch.utils.data.TensorDataset:
-        final_path = self.test_data_path
-        df = pandas.read_csv(final_path)
-        return self.dataset_transform(df,sample=self.sample)
-    
-    def get_labels(self):
-        return [0,1]
-
-    def get_metadata(self):
-        return self.metadata
-
-    def model_alterations(self,model):
-        return model.double()
-
-class FraudDataEngine(FraudData):
-    """FraudDataEngine 
-    This is to create custom distributions. So No Test Path. From Train folder make data blocks.
-    """
-    def __init__(self,data_path,distirbution_args:DistributionArgs,world_size=5,temp_path=None):
-        super().__init__()
-        self.data_path = data_path
-        self.dist_args = distirbution_args
-        if temp_path is None:
-            self.temp_path = os.path.join(os.path.abspath(data_path),'experiment_data_shards')
-        else:
-            self.temp_path = temp_path
-        self.world_size = world_size
-        safe_mkdir(self.root_path)
-        self.setup_shards()
-    
-    def get_full_dataframe(self):
-        csv_file_paths = [os.path.join(self.data_path,'output'+str(i+1)+'.csv') for i in range(5)]    
-        dfs = [pandas.read_csv(i) for i in csv_file_paths]
-        df = pandas.concat(dfs)
-        return df
-
-    def write_to_path(self,df,index):
-        path = os.path.join(self.root_path,'output'+str(index)+'.csv')
-        df.to_csv(path)
-    
-    @property
-    def root_path(self):
-        path = os.path.join(self.temp_path,str(self.world_size))
-        return path
-
-    def setup_shards(self):
-        df = self.get_full_dataframe()
-        non_fraud = df[df['Class']==0]
-        fraud = df[df['Class']==1]
-        test_set_portion = 1 - self.dist_args.test_set_portion
-        fraud_mask = self.create_mask(fraud,test_set_portion) 
-        non_fraud_mask = self.create_mask(non_fraud,test_set_portion)
-        
-        fraud_test = fraud[~fraud_mask]
-        non_fraud_test = non_fraud[~non_fraud_mask]
-        # save Test dataframe
-        self.write_to_path(pandas.concat([fraud_test,non_fraud_test]),'-test')
-        # Split the main dataframe. 
-        fraud = fraud[fraud_mask]
-        non_fraud = non_fraud[non_fraud_mask]
-        
-        if self.dist_args.uniform_label_distribution:
-            non_fraud_dfs = np.array_split(non_fraud,self.world_size)
-            fraud_dfs = np.array_split(fraud,self.world_size)
-            index = 0
-            for fr_df,nfr_df in zip(non_fraud_dfs,fraud_dfs):
-                write_df = pandas.concat([fr_df,nfr_df])
-                self.write_to_path(write_df,index+1)
-                index+=1
-        else:
-            split_vals = self.dist_args.label_split_values
-            
-            if len(split_vals) == 0 or len(split_vals) > self.world_size or len(split_vals) < self.world_size:
-                rand_dist = np.random.randint(10,1000,(self.world_size))
-                prob_dist = rand_dist/np.sum(rand_dist)
-                prob_dist = prob_dist.tolist()
-            else:
-                prob_dist = self.dist_args.label_split_values
-            self.dist_args.label_split_values = prob_dist
-            non_fraud_dfs = np.array_split(non_fraud,self.world_size)
-            for index,prob in enumerate(prob_dist):
-                fraud_sample_df = fraud.sample(frac=prob,random_state=200)
-                fraud.drop(fraud_sample_df.index,axis=0,inplace=True)
-                write_df = pandas.concat([fraud_sample_df,non_fraud_dfs.pop()])
-                self.write_to_path(write_df,index+1)
-
-    def get_distributed_dataset(self):
-        return FraudDistributedDataset(self.root_path,os.path.join(self.root_path,'output-test.csv'),self.dist_args.sample,dataclasses.asdict(self.dist_args))
-
-
-class SplitDataEngine(FraudData):
-    """SplitDataEngine 
-    This is to leverage the Already present splits in the `dataset-repo` directory. 
-    """
-    def __init__(self,distirbution_args:DistributionArgs,world_size=5,temp_path=None):
-        self.data_path = DEFAULT_DATASET_PATH
-        self.dist_args = distirbution_args
-        self.world_size = world_size
-        self.metadata_dict = None
-        self.setup_shards()
-
-    def setup_shards(self):
-        if self.dist_args.selected_split is None or self.dist_args.selected_split not in DATASET_CHOICES:
-            print("No Distribution Has been Selected So Using Default : %s"%DEFAULT_DISTRIBUTION)
-            self.dist_args.selected_split = DEFAULT_DISTRIBUTION
-        self.train_path = os.path.join(self.data_path,'train',self.dist_args.selected_split,'dispatcher_folder_credit')
-        self.test_path = os.path.join(self.data_path,'Cred_test.csv')
-        
-    def get_distributed_dataset(self):
-        return FraudDistributedDataset(self.train_path,self.test_path,self.dist_args.sample,dataclasses.asdict(self.dist_args))
+def get_distributed_dataset(dispatcher_args:DispatcherControlParams):
+    train_st = FraudData()\
+                .dataset_transform(\
+                    pandas.read_csv(TRAIN_PATH) if dispatcher_args.sample is None else pandas.read_csv(TRAIN_PATH).sample(dispatcher_args.sample)
+                )
+    test_st =  FraudData()\
+                .dataset_transform(\
+                    pandas.read_csv(TEST_PATH) if dispatcher_args.sample is None else pandas.read_csv(TEST_PATH).sample(dispatcher_args.sample)
+                )
+    disp = Dispatcher(dispatcher_args,train_st,test_st)
+    datastore = disp.run()
+    fraud_block_dist_dataset = datastore.get_distributed_dataset(
+        UsedClass=FraudBlockDataset,
+        test_set=test_st
+    )
+    return fraud_block_dist_dataset,datastore

@@ -46,7 +46,7 @@ class FraudFFNetwork(nn.Module):
         '''
         x = x.squeeze(1)
         op = self.model(x)
-        return F.sigmoid(op)
+        return torch.sigmoid(op)
 
 class ModelFactory:
     models = ['CNN','FF']

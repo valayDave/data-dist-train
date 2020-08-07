@@ -12,13 +12,10 @@ import dataclasses
 import json
 from sklearn.preprocessing import StandardScaler
 from fraud_dataset import FraudDataset,\
-        FraudDistributedDataset,\
-        FraudDataEngine,\
-        SplitDataEngine,\
-        DATASET_CHOICES,\
-        DEFAULT_DISTRIBUTION,\
-        DEFAULT_DATASET_PATH,\
-        get_train_dataset_path\
+        DispatcherControlParams
+import fraud_dataset
+        
+        
 
 from distributed_trainer import \
     NetworkArgs,\
@@ -92,8 +89,6 @@ def cli():
 @click.option('--non_uniform',default=False,is_flag=True,help='Flag to specify To have Uniform Splits or None Uniform Splits of the data')
 @click.option('--sample',default=None,type=int,help='Sample N Values from the DistributedDataset')
 @click.option('--world_size',default=5,type=int,help='Number of Distributed Processes for Distributed Training')
-@click.option('--test_set_split',default=0.3,type=float,help='Percentage of the overall Dataset which will be used as a Test Set')
-@click.option('--use_split',default=None,type=click.Choice(DATASET_CHOICES),help='Override The chosen Dataset')
 @click.option('--note',default=None,type=str,help='Some Note to Add while Saving Experiment')
 def distributed(\
                 batch_size=128,
@@ -108,38 +103,42 @@ def distributed(\
                 non_uniform=False,
                 model='CNN',
                 world_size=5,
-                test_set_split=0.3,
-                use_split=None,
                 note=None
                 ):
-    selected_dist = DEFAULT_DISTRIBUTION
-    if use_split is not None:
-        selected_dist = use_split
-    data_engine = None
-    if use_split is not None:
-        click.secho("Using Split For Training : %s"%selected_dist,fg='green')
-        world_size = 5
-        data_engine = SplitDataEngine(
-            DistributionArgs(\
-                sample=sample,\
-                uniform_label_distribution = None,\
-                test_set_portion=test_set_split,
-                selected_split = selected_dist
-            ),\
-            world_size=world_size
-        )
-    else:
-        # Below line little hacky. But can be updated later with the dataset. 
-        train_dataset_path = get_train_dataset_path(distribution=selected_dist)
-        data_engine = FraudDataEngine(
-            train_dataset_path,\
-            DistributionArgs(\
-                sample=sample,\
-                uniform_label_distribution = not non_uniform,\
-                test_set_portion=test_set_split
-            ),\
-            world_size=world_size
-        )
+    run_dist_trainer(
+        batch_size = batch_size,
+        epochs = epochs,
+        backend = backend,
+        master_ip = master_ip,
+        master_port = master_port,
+        learning_rate = learning_rate,
+        checkpoint_dir = checkpoint_dir,
+        dont_save = dont_save,
+        sample = sample,
+        non_uniform = non_uniform,
+        model = model,
+        world_size = world_size,
+        note = note,
+    )
+
+def run_dist_trainer(batch_size=128,
+                epochs=128,
+                backend='gloo',
+                master_ip='127.0.0.1',
+                master_port='12355',
+                learning_rate=0.0001,
+                checkpoint_dir=DEFAULT_CHECKPOINT,
+                dont_save=False,
+                sample=None,
+                non_uniform=False,
+                model='CNN',
+                world_size=5,
+                note=None):
+    dispatcher_params = DispatcherControlParams(
+        num_workers=world_size,
+        sample=sample   
+    )
+    distributed_dataset,_ = fraud_dataset.get_distributed_dataset(dispatcher_params)
 
     nnargs = FraudExpNetworkArgs()
     model_class,args = FACTORY.get_model(model)
@@ -157,7 +156,7 @@ def distributed(\
                 save_experiment=not dont_save,
         )
     )
-    json_str = json.dumps(dataclasses.asdict(data_engine.dist_args),indent=4)
+    json_str = json.dumps(dataclasses.asdict(dispatcher_params),indent=4)
 
     args_str = '''
     Training Stats : 
@@ -166,23 +165,23 @@ def distributed(\
         Number of Epochs : {num_epochs}\n
         Worker Label Distribution : {distribution}\n
         Data Distribution Args :\n
-        {data_dist_args}\n
+        {dispatcher_params}\n
     '''.format(**dict(
         batch_size=str(batch_size),
         num_epochs=str(epochs),
         learning_rate=str(learning_rate),
         distribution='Uniform' if not non_uniform else 'Non-Uniform',
-        data_dist_args=json_str.replace('\t','\t\t')
+        dispatcher_params=json_str.replace('\t','\t\t')
     ))
 
     click.secho('Starting Distributed Training With %s Workers'%(str(world_size)),fg='green',bold=True)
     click.secho(args_str+'\n\n',fg='magenta')
 
-    train_distributed(
+    return train_distributed(
         world_size,
         nnargs,
         trainer_args,
-        data_engine.get_distributed_dataset(),
+        distributed_dataset,
         DistTrainerArgs(
             backend=backend,
             master_ip=master_ip,
