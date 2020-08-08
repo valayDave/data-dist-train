@@ -3,7 +3,8 @@ from distributed_trainer.data_dispatcher import \
     Dispatcher,\
     DispatcherControlParams,\
     BlockDistributedDataset,\
-    DataBlock
+    DataBlock,\
+    ALLOWED_DISPATCHING_METHODS
 
 import random
 import torchvision
@@ -26,7 +27,7 @@ class CifarBlockDataset(BlockDistributedDataset):
             features.append(img_tensor)
             labels.append(value)
         features = torch.stack(features)
-        labels = torch.Tensor(labels)
+        labels = torch.Tensor(labels).long()
         return TensorDataset(features,labels)
 
     def get_train_dataset(self, rank):
