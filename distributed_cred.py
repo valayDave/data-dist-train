@@ -12,10 +12,10 @@ import dataclasses
 import json
 from sklearn.preprocessing import StandardScaler
 from fraud_dataset import FraudDataset,\
-        DispatcherControlParams
+        DispatcherControlParams,\
+        ALLOWED_DISPATCHING_METHODS
+
 import fraud_dataset
-        
-        
 
 from distributed_trainer import \
     NetworkArgs,\
@@ -90,6 +90,8 @@ def cli():
 @click.option('--sample',default=None,type=int,help='Sample N Values from the DistributedDataset')
 @click.option('--world_size',default=5,type=int,help='Number of Distributed Processes for Distributed Training')
 @click.option('--note',default=None,type=str,help='Some Note to Add while Saving Experiment')
+@click.option('--block_size',default=2,type=int,help='Block Size For the Dispatcher')
+@click.option('--dispatching_approach','--da',default=ALLOWED_DISPATCHING_METHODS[0],type=click.Choice(ALLOWED_DISPATCHING_METHODS),help='Approach to take for Dispatching data')
 def distributed(\
                 batch_size=128,
                 epochs=128,
@@ -103,7 +105,9 @@ def distributed(\
                 non_uniform=False,
                 model='CNN',
                 world_size=5,
-                note=None
+                note=None,
+                block_size=2,
+                dispatching_approach=ALLOWED_DISPATCHING_METHODS[0]
                 ):
     run_dist_trainer(
         batch_size = batch_size,
@@ -119,6 +123,8 @@ def distributed(\
         model = model,
         world_size = world_size,
         note = note,
+        block_size = block_size,
+        dispatching_approach = dispatching_approach,
     )
 
 def run_dist_trainer(batch_size=128,
@@ -133,10 +139,14 @@ def run_dist_trainer(batch_size=128,
                 non_uniform=False,
                 model='CNN',
                 world_size=5,
-                note=None):
+                note=None,
+                block_size = 2,
+                dispatching_approach = ALLOWED_DISPATCHING_METHODS[0]):
     dispatcher_params = DispatcherControlParams(
         num_workers=world_size,
-        sample=sample   
+        sample=sample,
+        approach=dispatching_approach,
+        block_size=block_size
     )
     distributed_dataset,_ = fraud_dataset.get_distributed_dataset(dispatcher_params)
 
@@ -163,14 +173,12 @@ def run_dist_trainer(batch_size=128,
         Batch Size : {batch_size}\n
         Learning Rate : {learning_rate}\n
         Number of Epochs : {num_epochs}\n
-        Worker Label Distribution : {distribution}\n
-        Data Distribution Args :\n
+        Dispatcher Args :\n
         {dispatcher_params}\n
     '''.format(**dict(
         batch_size=str(batch_size),
         num_epochs=str(epochs),
         learning_rate=str(learning_rate),
-        distribution='Uniform' if not non_uniform else 'Non-Uniform',
         dispatcher_params=json_str.replace('\t','\t\t')
     ))
 

@@ -18,7 +18,8 @@ from distributed_trainer.data_dispatcher import \
     Dispatcher,\
     DispatcherControlParams,\
     BlockDistributedDataset,\
-    DataBlock
+    DataBlock,\
+    ALLOWED_DISPATCHING_METHODS
 
 BASE_PATH = os.path.join(os.path.dirname(__file__),'dataset-repo')
 TRAIN_PATH = os.path.join(BASE_PATH,'Cred_train.csv')
