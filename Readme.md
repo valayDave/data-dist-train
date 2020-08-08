@@ -9,6 +9,7 @@ TODO : Document the Module
     git submodule update --init
     ```
 2. `pip install -r requirements.txt`
+3. `cd dataset-repo && tar -xzvf dataset.tar.gz`
 
 ## Running Credit Card Fraud Training Experiments
 
@@ -22,12 +23,17 @@ sh uniform_experiments.sh # Runs training with DistributedDataparallel Network o
 
 
 ## Running Individual Scripts
-```
+```sh
 python distributed_cred.py distributed --help
 ```
-
+```sh
+python distributed_cifar.py distributed --help
 ```
+```sh
 python distributed_cred.py monolith --help
+```
+```sh
+python parameter_map.py # Converts Grid params to objects for running experiment. 
 ```
 
 ## Running Results Visualisation
@@ -39,3 +45,5 @@ streamlit run visual_explorer.py
 
 ## Import Point While Training 
 1. Batchsize Will influence the number of minibatches of distributed workers. Gradient syncing happens for works so imbalanced minibatches can cause a deadlock for gradient syncing due to Pytorch's DistributedDataParallel Implementation
+
+2. Metaflow can be used a the version management and infrastructure bundling layer. 
