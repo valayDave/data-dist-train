@@ -46,6 +46,8 @@ class DataBlock:
             f'data_item_indexes={len(self.data_item_indexes)!r}, '
             ')'
         )
+    def __len__(self):
+        return len(self.data_item_indexes)
 
 class BlockDistributedDataset(DistributedDataset):
     def __init__(self,train_dataset,blocks:List[DataBlock],test_dataset=None,metadata=None):
@@ -129,12 +131,16 @@ class Dispatcher:
             random.shuffle(self.train_dataset)
         item_indexes = [i for i in range(len(self.train_dataset))]
         for index in item_indexes:
-            flush_items.append(index)
-            if index % self.control_params.block_size == 0 and index > 0:
+            if index % self.control_params.block_size == 0 and index > 0 and self.control_params.block_size!=1:
                 self.dispatch_block(flush_items,block_map,flush_counter)
                 flush_counter+=1
                 flush_items = []
-            
+            flush_items.append(index)
+        
+        if len(flush_items)  > 0:
+            self.dispatch_block(flush_items,block_map,flush_counter)
+
+        # print("Distribution of Dataset : %s"%','.join([str(len(m)) for m in block_map]))
         datastore = DataStore(
             dataset=self.train_dataset,
             blocks = block_map,
@@ -150,7 +156,9 @@ class Dispatcher:
             selected_worker_block = blocks[selected_index]
         
         elif self.control_params.approach =='round_robin':
-            selected_worker_block = blocks[flush_counter % self.control_params.num_workers]
+            selected_index = flush_counter % self.control_params.num_workers
+            # print("dispatching to %d With Len %d"%(selected_index,len(index_list)))
+            selected_worker_block = blocks[selected_index]
 
         selected_worker_block.update(index_list)
         return 

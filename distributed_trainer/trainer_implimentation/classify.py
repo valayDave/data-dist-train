@@ -8,6 +8,9 @@ from ..trainer import *
 from ..utils import *
 
 class DistributedClassificationTrainer(DistributedTrainer):
+    '''
+    This will be used for Classification Tasks and 
+    '''
     def __init__(self,dataset,print_every=1,**kwargs):
         self.print_every = print_every
         super(DistributedClassificationTrainer, self).__init__(dataset=dataset,**kwargs)
@@ -41,11 +44,11 @@ class DistributedClassificationTrainer(DistributedTrainer):
             curr_index+=1
             if curr_index in print_checkpoints:
                 self.logger.info('%s %s %s For Rank : %s'%(str(losses),str(acc),str(batch_time),str(self.rank)))
-                self.logger.info(self.conf_matrix_str(conf_matrix))
+                # self.logger.info(self.conf_matrix_str(conf_matrix))
 
         self.logger.info("Completed Training Loop")
         self.logger.info('%s %s %s For Rank : %s'%(str(losses),str(acc),str(batch_time),str(self.rank)))
-        self.logger.info(self.conf_matrix_str(conf_matrix))
+        # self.logger.info(self.conf_matrix_str(conf_matrix))
         # self.sync_grads()
         return ExperimentResultsBundle(
             losses=losses.avg,
@@ -76,11 +79,11 @@ class DistributedClassificationTrainer(DistributedTrainer):
                 curr_index+=1
                 if curr_index in print_checkpoints:
                     self.logger.info('%s %s %s For Rank : %s'%(str(losses),str(acc),str(batch_time),str(self.rank)))
-                    self.logger.info(self.conf_matrix_str(conf_matrix))
+                    # self.logger.info(self.conf_matrix_str(conf_matrix))
 
             self.logger.info("Completed Testing Loop")
             self.logger.info('%s %s %s For Rank : %s'%(str(losses),str(acc),str(batch_time),str(self.rank)))
-            self.logger.info(self.conf_matrix_str(conf_matrix))
+            # self.logger.info(self.conf_matrix_str(conf_matrix))
             return ExperimentResultsBundle(
                 losses=losses.avg,
                 accuracy=acc.avg,

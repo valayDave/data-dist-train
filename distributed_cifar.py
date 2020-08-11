@@ -115,6 +115,67 @@ def distributed(\
         dispatching_approach = dispatching_approach,
     )
 
+def run_trainer_from_dataset(batch_size=128,
+                epochs=128,
+                backend='gloo',
+                master_ip='127.0.0.1',
+                master_port='12355',
+                learning_rate=0.0001,
+                checkpoint_dir=DEFAULT_CHECKPOINT,
+                dont_save=False,
+                non_uniform=False,
+                model='ResNet18',
+                world_size=5,
+                note=None,
+                distributed_dataset=None):
+    
+    nnargs = CifarExpNetworkArgs()
+    model_class,args = FACTORY.get_model(model)
+    nnargs.model = model_class
+    nnargs.model_args_dict = args
+    nnargs.optimizer_args_dict = {
+        'lr': learning_rate
+    }
+    trainer_args = TrainerArgs(
+            batch_size=batch_size,
+            shuffle=True,
+            num_epochs=epochs,
+            checkpoint_args = CheckpointingArgs(
+                path = checkpoint_dir,
+                save_experiment=not dont_save,
+        )
+    )
+    args_str = '''
+    Training Stats : 
+        Batch Size : {batch_size}\n
+        Learning Rate : {learning_rate}\n
+        Number of Epochs : {num_epochs}\n
+        Dispatcher Args :\n
+    '''.format(**dict(
+        batch_size=str(batch_size),
+        num_epochs=str(epochs),
+        learning_rate=str(learning_rate)
+    ))
+
+    click.secho('Starting Distributed %s Training With %s Workers'%(model,str(world_size)),fg='green',bold=True)
+    click.secho(args_str+'\n\n',fg='magenta')
+    print("Master Port : ",master_port)
+    return train_distributed(
+        world_size,
+        nnargs,
+        trainer_args,
+        distributed_dataset,
+        DistTrainerArgs(
+            backend=backend,
+            master_ip=master_ip,
+            master_port=master_port,
+            world_size=world_size,
+        ),
+        CifarDistributedTrainer,
+        note
+    )
+
+
 def run_dist_trainer(batch_size=128,
                 epochs=128,
                 backend='gloo',

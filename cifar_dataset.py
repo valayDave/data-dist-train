@@ -29,6 +29,23 @@ class CifarBlockDataset(BlockDistributedDataset):
         features = torch.stack(features)
         labels = torch.Tensor(labels).long()
         return TensorDataset(features,labels)
+    
+    @staticmethod
+    def get_all_labels(dataset):
+        labels = []
+        for _,value in dataset:
+            labels.append(int(value))
+        return labels
+    
+    def get_block_labels(self):
+        block_labels = [
+
+        ]
+        for block in self.blocks:
+            selected_items = [self.train_dataset[i] for i in block.data_item_indexes]
+            labels = self.get_all_labels(selected_items)
+            block_labels.append(labels)
+        return block_labels
 
     def get_train_dataset(self, rank):
         selected_block = self.blocks[rank]
