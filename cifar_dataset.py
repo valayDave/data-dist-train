@@ -11,7 +11,7 @@ import torchvision
 import torch
 from torch.utils.data import TensorDataset
 import torchvision.transforms as transforms
-torchvision.datasets.CIFAR10('./',download=True)
+# torchvision.datasets.CIFAR10('./',download=True)
 
 class CifarBlockDataset(BlockDistributedDataset):
 

@@ -13,6 +13,10 @@ class Parameter:
     quoted:bool=False
     random_value:bool=False
 
+    def __post_init__(self):
+        if self.random_value:
+            self.values = [str(random.randint(10000,40000)) for _ in self.values]
+
     def as_arg(self):
         return '--'+self.name
     
@@ -21,7 +25,12 @@ class Parameter:
             value = random.randint(10000,40000)
         if self.quoted:
             value = "\""+value+"\""
-        return value   
+        return value
+    
+    def get_value(self,value):
+        if self.random_value:
+            return str(random.randint(10000,40000))
+        return value
 
 @dataclass
 class ScriptInput:
@@ -74,7 +83,7 @@ class ParameterMap:
                                 ])
             object_dict = {}
             for arg in self.static_params+list(combination):
-                object_dict.update({arg.name:arg.values[0]})
+                object_dict.update({arg.name:arg.get_value(arg.values[0])})
             self.object_dicts.append(object_dict)
             self.command_list.append(static_command)
         
@@ -105,7 +114,7 @@ if __name__ == "__main__":
     param_list_dist = [
         Parameter(
             name='batch_size',
-            values=[2**(i+8) for i in range(7)] # [256, 512, 1024, 2048, 4096] 
+            values=[2**(i+1) for i in range(7)] # [256, 512, 1024, 2048, 4096] 
         ),
         Parameter(
             name='epochs',
