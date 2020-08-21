@@ -3,3 +3,12 @@
 experiments
 data/
 model_data/
+__pycache__/
+saved_models/
+remote-model
+model_data_new
+command_list.sh
+test_mp/
+.metaflow/
+current_sesssion*
+cifar-*
