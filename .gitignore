@@ -12,3 +12,84 @@ test_mp/
 .metaflow/
 current_sesssion*
 cifar-*
+
+
+# Packages #
+############
+# it's better to unpack these files and commit the raw source
+# git has its own built in compression methods
+*.7z
+*.dmg
+*.gz
+*.iso
+*.rar
+*.jar
+*.tar
+*.zip
+
+# Logs and databases #
+######################
+*.log
+*.sqlite
+
+# OS generated files #
+######################
+.DS_Store
+ehthumbs.db
+Icon
+Thumbs.db
+.tmtags
+.idea
+tags
+vendor.tags
+tmtagsHistory
+*.sublime-project
+*.sublime-workspace
+.bundle
+
+# VS Code #
+###########
+.vscode/*
+.vscode/
+#!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Eclipse IDE #
+###############
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+.externalToolBuilders/
+*.launch
+*.pydevproject
+.cproject
+.autotools
+.factorypath
+.buildpath
+.target
+.tern-project
+.texlipse
+.springBeans
+.recommenders/
+.apt_generated/
+.cache-main
+.scala_dependencies
+.worksheet
+
+# IntelliJ / PyCharm #
+############
+out/
+.idea/
+*.iml
+*.iws
+**/.idea/
