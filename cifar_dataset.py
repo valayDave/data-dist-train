@@ -5,7 +5,8 @@ from distributed_trainer.data_dispatcher import \
     BlockDistributedDataset,\
     DataBlock,\
     ALLOWED_DISPATCHING_METHODS,\
-    DistributedSampler
+    DistributedSampler,\
+    SamplerArgs
 
 import random
 import torchvision
@@ -62,7 +63,7 @@ class CifarBlockDataset(BlockDistributedDataset):
 
 
 
-def create_dataset():
+def create_dataset(sample=None):
     '''
     Creating the same tensor dataset from FS. 
     '''
@@ -77,16 +78,15 @@ def create_dataset():
     ])
     train_st = torchvision.datasets.CIFAR10('./',transform=transform_train)
     test_st = torchvision.datasets.CIFAR10('./',train=False,transform=transform_test)
+    if sample is not None:
+        train_st = [ train_st[data_index] for data_index in random.sample([i for i in range(len(train_st))],sample)]
+        test_st = [ test_st[data_index] for data_index in random.sample([i for i in range(len(test_st))],sample)]
     return train_st,test_st
 
 
 
 def get_distributed_dataset(dispatcher_args:DispatcherControlParams):
-    train_st, test_st = create_dataset()
-    if dispatcher_args.sample is not None:
-        train_st = [ train_st[data_index] for data_index in random.sample([i for i in range(len(train_st))],dispatcher_args.sample)]
-        test_st = [ test_st[data_index] for data_index in random.sample([i for i in range(len(test_st))],dispatcher_args.sample)]
-
+    train_st, test_st = create_dataset(dispatcher_args.sample)
     disp = Dispatcher(dispatcher_args,\
                     CifarBlockDataset.transform(train_st),\
                     CifarBlockDataset.transform(test_st))

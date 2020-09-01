@@ -14,7 +14,8 @@ from sklearn.preprocessing import StandardScaler
 from cifar_dataset import CifarBlockDataset,\
         DispatcherControlParams,\
         ALLOWED_DISPATCHING_METHODS,\
-        DistributedSampler
+        DistributedSampler,\
+        SamplerArgs
 
 import cifar_dataset
 
@@ -327,17 +328,20 @@ def run_dist_trainer_global_suffle(
     sampler_host='127.0.0.1',
     sampler_port=5003
     ):
-    train_set,test_set = cifar_dataset.create_dataset()
+    train_set,test_set = cifar_dataset.create_dataset(sample=sample)
     sampler_session_id = DistributedSampler.create_session(len(train_set),world_size,block_size,host=sampler_host,port=sampler_port)
+    sampler_args = SamplerArgs(
+            block_size=block_size,
+            num_workers=world_size,
+            host=sampler_host,
+            port=sampler_port,
+            UsedClass=cifar_dataset.CifarBlockDataset,
+            connection_id=sampler_session_id
+    )
     distributed_sampler = DistributedSampler(
-        train_set,
-        block_size=block_size,
-        num_workers=world_size,
-        host=sampler_host,
+        sampler_args,
+        train_set = train_set,
         test_set=test_set,
-        port=sampler_port,
-        UsedClass=cifar_dataset.CifarBlockDataset,
-        connection_id=sampler_session_id
     )
     distributed_dataset = distributed_sampler.get_distributed_dataset()
 
@@ -363,11 +367,12 @@ def run_dist_trainer_global_suffle(
         Batch Size : {batch_size}\n
         Learning Rate : {learning_rate}\n
         Number of Epochs : {num_epochs}\n
-
+        Type of distributed Dataset : {dis_ds}
     '''.format(**dict(
         batch_size=str(batch_size),
         num_epochs=str(epochs),
-        learning_rate=str(learning_rate)
+        learning_rate=str(learning_rate),
+        dis_ds=distributed_dataset.__class__.__name__
     ))
 
     click.secho('Starting Distributed %s Training With %s Workers'%(model,str(world_size)),fg='green',bold=True)
@@ -386,7 +391,7 @@ def run_dist_trainer_global_suffle(
         ),
         CifarDistributedTrainer,
         note,
-        distributed_sampler=distributed_sampler
+        sampler_args
     )
 
 

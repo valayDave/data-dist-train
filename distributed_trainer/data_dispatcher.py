@@ -210,31 +210,38 @@ class DistributedIndexSampler(rpyc.Service):
         del self.session_map[connection_id]
         self.save_map()
 
+
+@dataclass
+class SamplerArgs:
+    block_size:int=2
+    num_workers:int=5
+    port:int=5000 # Port to DistributedIndexSampler
+    host:str='127.0.0.1' # host of the DistributedIndexSampler
+    UsedClass:BlockDistributedDataset=BlockDistributedDataset
+    connection_id:str=None # Id of the Remote Connection
+        
+        
+
 class DistributedSampler:
     '''
 
     '''
     def __init__(self,
-                train_set,
-                block_size=2,
-                num_workers=5,
-                port=5000, # Port to DistributedIndexSampler
-                host='127.0.0.1', # host of the DistributedIndexSampler
-                test_set=None,
-                UsedClass=BlockDistributedDataset,
-                connection_id=None): # Id of the Remote Connection
+                sampler_args:SamplerArgs,
+                train_set=[],
+                test_set=None): 
         self.train_set = train_set
-        self.num_workers = num_workers
+        self.num_workers = sampler_args.num_workers
         self.test_set = test_set
-        self.UsedClass = UsedClass
-        self.port=port
-        self.host=host
+        self.UsedClass = sampler_args.UsedClass
+        self.port= sampler_args.port
+        self.host= sampler_args.host
 
         # Do init with service to create the remote sampler session
-        if connection_id is None:
-            self.connection_id = self.create_session(len(train_set),num_workers,block_size,host=host,port=port)
+        if sampler_args.connection_id is None:
+            self.connection_id = self.create_session(len(train_set),sampler_args.num_workers,sampler_args.block_size,host=sampler_args.host,port=sampler_args.port)
         else:
-            self.connection_id = connection_id
+            self.connection_id = sampler_args.connection_id
 
 
     def shuffle(self):
@@ -242,7 +249,7 @@ class DistributedSampler:
         Call Remote Shuffle here. 
         '''
         conn = rpyc.connect(port=self.port,host=self.host,config = rpyc.core.protocol.DEFAULT_CONFIG)
-        conn.root.shuffle()
+        conn.root.shuffle(self.connection_id)
         conn.close()
 
     def get_distributed_dataset(self):
@@ -252,7 +259,9 @@ class DistributedSampler:
         '''
         conn = rpyc.connect(port=self.port,host=self.host)
         index_lists = conn.root.get_indexes(self.connection_id)
-        data_blocks = [DataBlock(data_item_indexes=idx_list) for idx_list in index_lists]
+        # THERE IS A MASSIVE SERIALIISATION ISSUE WITH RPYC. 
+        # ALL data Needs to Be serialised Properly!. 
+        data_blocks = [DataBlock(data_item_indexes=list(idx_list)) for idx_list in index_lists]
         conn.close()
         return self.UsedClass(self.train_set,data_blocks,test_dataset=self.test_set,metadata=dict(distributed_sampler=True))
     
@@ -342,14 +351,4 @@ class Dispatcher:
 
         selected_worker_block.update(index_list)
         return 
-        
-
-if __name__ == "__main__":
-    from rpyc.utils.server import ThreadedServer
-    t = ThreadedServer(DistributedIndexSampler, port=5003)
-    print("Starting DistributedIndexSampler At Port 5003")
-    t.start()
-
-        
-        
         

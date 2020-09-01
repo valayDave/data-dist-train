@@ -26,6 +26,8 @@ from .utils import \
     DistributionArgs,\
     ModelBundle
 
+from .data_dispatcher import DistributedSampler,SamplerArgs,BlockDistributedDataset
+
 from .dataset import\
          Dataset,\
         DistributedDataset
@@ -257,11 +259,11 @@ class DistributedTrainer(BaseTrainer):
     """DistributedTrainer 
 
     """
-    def __init__(self,dist_args=DistTrainerArgs(),distributed_sampler=None,**kwargs):
+    def __init__(self,dist_args=DistTrainerArgs(),distributed_sampler_args=None,**kwargs):
         self.dist_args = dist_args
         super(DistributedTrainer, self).__init__(**kwargs)
         self.rank = None
-        self.distributed_sampler = distributed_sampler
+        self.distributed_sampler_args = distributed_sampler_args
         
     def setup(self,rank,world_size):
         proc_name = self.__class__.__name__+'__'+str(rank)
@@ -271,8 +273,18 @@ class DistributedTrainer(BaseTrainer):
 
         global_shuffle = self.dist_args.global_shuffle
         if global_shuffle:
-            if self.distributed_sampler is None:
-                raise Exception("Global Shuffle Requires a Client Connection to Distributed Sampler Service to get New Indices every Epoch.\nPlease instantiate Trainer with `distributed_sampler` property.\n Run ``$ python -m distributed_trainer.data_dispatcher `` to Start the sampler service.  ")
+            if self.distributed_sampler_args is None:
+                raise Exception("Global Shuffle Requires SamplerArgs instantiate the sampler and get New Indices every Epoch.\nPlease instantiate Trainer with `distributed_sampler_args` property.\n Run ``$ python -m distributed_trainer.data_dispatcher `` to Start the sampler service.  ")
+            if not isinstance(self.dataset,BlockDistributedDataset):
+                raise Exception(f"Global Shuffle Requires A Child of the BlockDistributedDataset and Not {self.dataset.__class__.__name__}")
+            if self.distributed_sampler_args.connection_id is None:
+                raise Exception(f'A Global Shuffle Requres `connection_id` arguement in SamplerArgs. Please create Connection via DistributedSampler. create_session(list_length,workers,block_size,..)')
+            self.distributed_sampler = DistributedSampler(
+                self.distributed_sampler_args,
+                train_set = self.dataset.train_dataset,
+                test_set= self.dataset.test_dataset,
+            )
+            
         # initialize the process group
         if self.dist_args.backend == 'gloo':
             dist.init_process_group(self.dist_args.backend, rank=rank, world_size=world_size,init_method='env://'+self.dist_args.master_ip+':'+self.dist_args.master_port)
@@ -303,7 +315,7 @@ class DistributedTrainer(BaseTrainer):
         # setting barrier here as any process coming heere with shuffle arg 
         # should wait until the datastore is completely shuffled. 
         torch.distributed.barrier()
-        self.logger.info("Crossed Barrier")
+        # self.logger.info("Crossed Barrier")
         self.dataset = self.distributed_sampler.get_distributed_dataset()
         self.logger.info("Set Shuffled Dataset On Client Again")
         
@@ -346,6 +358,8 @@ class DistributedTrainer(BaseTrainer):
                 self.shuffe_worker_dataset(shuffle=True)
         torch.distributed.barrier()
         if self.on_completion_checkpoint_validaiton():
+            if self.dist_args.global_shuffle:
+                self.distributed_sampler.close_session()
             exp_bundle,model_bundle = self.create_experiment_bundle(experiment_results,validation_results)
             self.logger.info("Created Bundle For Checkpoint On Rank %s For Path %s"%(str(self.rank),self.checkpoint_save_path))
             self.save_checkpoint(
@@ -460,10 +474,9 @@ def create_trainer(rank,\
                     dataset,\
                     dist_args,\
                     trainer,
-                    note,\
-                    distributed_sampler
-                    # namespace,\
-                    ):
+                    note,
+                    namespace,\
+                    distributed_sampler_args):
     print(f"Created Trainer for Number {rank} and {world_size}")
     training_prog = trainer(
         network_args=network_args,
@@ -471,14 +484,14 @@ def create_trainer(rank,\
         dataset=dataset,
         dist_args=dist_args,
         note=note,
-        distributed_sampler=distributed_sampler
+        distributed_sampler_args=distributed_sampler_args
     )
     
     training_prog.run(rank,world_size)
-    # if rank == 0 and namespace is not None:
-    #     experimental_bundle,model_bundle = trainer.create_bundle_from_checkpoint(training_prog.checkpoint_save_path)
-    #     namespace.model_bundle = dataclasses.asdict(model_bundle)
-    #     namespace.experiment_bundle = dataclasses.asdict(experimental_bundle)
+    if rank == 0 and namespace is not None:
+        experimental_bundle,model_bundle = trainer.create_bundle_from_checkpoint(training_prog.checkpoint_save_path)
+        namespace.model_bundle = dataclasses.asdict(model_bundle)
+        namespace.experiment_bundle = dataclasses.asdict(experimental_bundle)
 
 
 
@@ -493,7 +506,7 @@ def train_monolith(
         network_args=network_args,
         training_args=training_args,
         dataset=dataset,
-        note = note,
+        note = note
     )
     training_prog.run()
 
@@ -506,13 +519,13 @@ def train_distributed(
         dist_args:DistTrainerArgs,
         trainer:DistributedTrainer,
         note:str,
-        distributed_sampler=None,
+        distributed_sampler_args=None
     ):
     print("REEACHED HERER!!")
-    # manager = multiprocessing.Manager()
-    # namespace = manager.Namespace()
-    # namespace.model_bundle = manager.dict()
-    # namespace.experiment_bundle = manager.dict()
+    manager = multiprocessing.Manager()
+    namespace = manager.Namespace()
+    namespace.model_bundle = manager.dict()
+    namespace.experiment_bundle = manager.dict()
     mp.spawn(create_trainer,\
             args=(world_size,\
                 network_args,\
@@ -521,12 +534,11 @@ def train_distributed(
                 dist_args,\
                 trainer,
                 note,\
-                distributed_sampler
+                namespace,\
+                distributed_sampler_args,\
                 ),\
             nprocs=world_size,\
-            join=False
+            join=True
             )
-            # namespace,\
-            # distributed_sampler
     print("Processes Have Joined")
-    # return namespace.experiment_bundle,namespace.model_bundle
+    return namespace.experiment_bundle,namespace.model_bundle
