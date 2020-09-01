@@ -8,8 +8,8 @@ import rpyc
 rpyc.core.protocol.DEFAULT_CONFIG['allow_pickle'] = True
 
 ALLOWED_DISPATCHING_METHODS = [
-    'random',
-    'round_robin'
+    'round_robin',
+    'random'
 ]
 @dataclass
 class DispatcherControlParams:

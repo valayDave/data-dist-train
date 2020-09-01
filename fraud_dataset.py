@@ -19,7 +19,9 @@ from distributed_trainer.data_dispatcher import \
     DispatcherControlParams,\
     BlockDistributedDataset,\
     DataBlock,\
-    ALLOWED_DISPATCHING_METHODS
+    ALLOWED_DISPATCHING_METHODS,\
+    DistributedSampler,\
+    SamplerArgs
 
 BASE_PATH = os.path.join(os.path.dirname(__file__),'dataset-repo')
 TRAIN_PATH = os.path.join(BASE_PATH,'Cred_train.csv')
@@ -146,15 +148,19 @@ class FraudDataset(Dataset,FraudData):
         return model.double()
 
 
-def get_distributed_dataset(dispatcher_args:DispatcherControlParams):
+def create_dataset(sample=None):
     train_st = FraudData()\
                 .dataset_transform(\
-                    pandas.read_csv(TRAIN_PATH) if dispatcher_args.sample is None else pandas.read_csv(TRAIN_PATH).sample(dispatcher_args.sample)
+                    pandas.read_csv(TRAIN_PATH) if sample is None else pandas.read_csv(TRAIN_PATH).sample(sample)
                 )
     test_st =  FraudData()\
                 .dataset_transform(\
-                    pandas.read_csv(TEST_PATH) if dispatcher_args.sample is None else pandas.read_csv(TEST_PATH).sample(dispatcher_args.sample)
+                    pandas.read_csv(TEST_PATH) if sample is None else pandas.read_csv(TEST_PATH).sample(sample)
                 )
+    return train_st,test_st
+
+def get_distributed_dataset(dispatcher_args:DispatcherControlParams):
+    train_st,test_st = create_dataset(dispatcher_args.sample)
     disp = Dispatcher(dispatcher_args,train_st,test_st)
     datastore = disp.run()
     fraud_block_dist_dataset = datastore.get_distributed_dataset(
