@@ -52,7 +52,7 @@ The `distributed_trainer.data_dispather.DistributedSampler` is an implementation
 
 Running Sampler Service
 ```sh
-$ python sampler_service.py will start the distributed sampler server.
+$ python sampler_service.py # will start the distributed sampler server.
 ```
 
 Running CIFAR Training Job:
