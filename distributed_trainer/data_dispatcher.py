@@ -136,12 +136,13 @@ class SamplerSession:
     def to_json(self):
         return asdict(self.datastore)
 
-class DistributedIndexSampler(rpyc.Service):
-    """DistributedIndexSampler 
+class DistributedIndexSamplerServer(rpyc.Service):
+    """DistributedIndexSamplerServer 
     - Every worker will connect with this singular distributed sampler server. 
     - Running Strategy
-        1. Rank 0 : Connects to create an index list
-        2. With every shuffle
+        1. Rank 0 : Connects to create an index list and call shuffle. 
+        2. `connection_id` will be used to do reference the sampler being used. 
+        3. if multiple training sessions can use the same sampling server. 
     """
     def __init__(self,session_storage_path='./sampler_session.json'):
         rpyc.Service.__init__(self)
