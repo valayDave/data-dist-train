@@ -61,6 +61,11 @@ $ python distributed_cifar.py distributed-global-shuffle --sample 52 --model Res
 ```
 The number of Minibatches needs to be equal across all the workers otherwise there will be a synchronization issue.
 
+Runnning Credit Card Fraud Detection Job: 
+```sh
+python distributed_cred.py distributed-global-shuffle --sample 200 --model FF --note "testing model with no Usecaase" --epochs 4 --world_size 2 --batch_size 2
+```
+
 
 ## Import Point While Training 
 1. Batchsize Will influence the number of minibatches of distributed workers. Gradient syncing happens for works so imbalanced minibatches can cause a deadlock for gradient syncing due to Pytorch's DistributedDataParallel Implementation
