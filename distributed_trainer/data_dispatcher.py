@@ -202,7 +202,7 @@ class DistributedIndexSamplerServer(rpyc.Service):
         print(self.session_map.keys())
         if str(connection_id) not in self.session_map:
             return []
-        index_lists = (
+        index_lists = tuple(
             tuple(block.data_item_indexes) for block in self.session_map[connection_id].datastore.blocks
         )
         brine_op = rpyc.core.brine.dump(index_lists)
