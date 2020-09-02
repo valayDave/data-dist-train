@@ -161,7 +161,6 @@ class DistributedIndexSamplerServer(rpyc.Service):
                 datastore.control_params.block_size,
                 datastore=datastore
             )
-        print("Loaded Sesssion MAP!! : ",session_map.keys())
         return session_map
     
     def save_map(self): # Save Datastore
@@ -203,9 +202,11 @@ class DistributedIndexSamplerServer(rpyc.Service):
         print(self.session_map.keys())
         if str(connection_id) not in self.session_map:
             return []
-        return [
+        index_lists = [
             block.data_item_indexes for block in self.session_map[connection_id].datastore.blocks
         ]
+        brine_op = rpyc.core.brine.dump(index_lists)
+        return brine_op
 
     def exposed_delete_session(self,connection_id):
         del self.session_map[connection_id]
@@ -259,7 +260,8 @@ class DistributedSampler:
         `BlockDistributedDataset`
         '''
         conn = rpyc.connect(port=self.port,host=self.host)
-        index_lists = conn.root.get_indexes(self.connection_id)
+        index_lists_encoded = conn.root.get_indexes(self.connection_id)
+        index_lists = rpyc.core.brine.load(index_lists_encoded)
         # THERE IS A MASSIVE SERIALIISATION ISSUE WITH RPYC. 
         # ALL data Needs to Be serialised Properly!. 
         data_blocks = [DataBlock(data_item_indexes=list(idx_list)) for idx_list in index_lists]

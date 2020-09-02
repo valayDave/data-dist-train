@@ -7,3 +7,5 @@ torchvision
 click
 plotly
 streamlit
+dataclasses
+rpyc
