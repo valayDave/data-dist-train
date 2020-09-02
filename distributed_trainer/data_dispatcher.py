@@ -270,7 +270,6 @@ class DistributedSampler:
         conn = rpyc.connect(port=self.port,host=self.host)
         index_lists = conn.root.delete_session(self.connection_id)
         conn.close()
-        print("Session On Sampler Deleted. ")
 
     @staticmethod
     def create_session(list_length,workers,block_size,host='localhost',port=5003):

@@ -360,6 +360,7 @@ class DistributedTrainer(BaseTrainer):
         if self.on_completion_checkpoint_validaiton():
             if self.dist_args.global_shuffle:
                 self.distributed_sampler.close_session()
+                self.logger.info('Session On Sampler Deleted. ')
             exp_bundle,model_bundle = self.create_experiment_bundle(experiment_results,validation_results)
             self.logger.info("Created Bundle For Checkpoint On Rank %s For Path %s"%(str(self.rank),self.checkpoint_save_path))
             self.save_checkpoint(
