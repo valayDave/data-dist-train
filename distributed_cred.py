@@ -333,6 +333,7 @@ def run_dist_trainer_global_suffle(batch_size=128,
             master_ip=master_ip,
             master_port=master_port,
             world_size=world_size,
+            global_shuffle=True
         ),
         FraudDistributedTrainer,
         note,
