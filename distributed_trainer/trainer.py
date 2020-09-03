@@ -437,7 +437,7 @@ class DistributedTrainer(BaseTrainer):
             optimizer_args = self.network_args.optimizer_args_dict,
             loss_fn = str(self.loss_fn),
             train_args = dataclasses.asdict(self.training_args),
-
+            global_shuffle = self.dist_args.global_shuffle
         )
         experimental_bundle = ExperimentBundle(
             note = self.note,
@@ -446,7 +446,8 @@ class DistributedTrainer(BaseTrainer):
             train_args = dataclasses.asdict(self.training_args),
             dataset_metadata = dataset_meta,
             rank = self.rank,
-            distributed=True
+            distributed=True,
+            global_shuffle = self.dist_args.global_shuffle
         )
         return (experimental_bundle,model_bundle)
 

@@ -159,6 +159,7 @@ class ExperimentBundle:
     rank:int = None
     distributed:bool=False
     note:str=None
+    global_shuffle:bool=False
     
 @dataclass
 class ModelBundle:
@@ -171,6 +172,7 @@ class ModelBundle:
     optimizer_args:dict=None
     loss_fn:str=None
     model_name:str=None
+    global_shuffle:bool=False
 
 @dataclass
 class DistributionArgs:
