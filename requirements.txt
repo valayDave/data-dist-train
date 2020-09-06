@@ -9,3 +9,4 @@ plotly
 streamlit
 dataclasses
 rpyc
+seaborn

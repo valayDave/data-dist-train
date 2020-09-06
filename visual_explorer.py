@@ -19,10 +19,9 @@ from plotly.subplots import make_subplots
 # MODEL_ROOTPATH = 'remote-model'
 MODEL_ROOTPATH = 'model_data/fraud_model'
 DEFAULT_TRAINER = 'FraudDistributedTrainer'
-
 AVAILABLE_TRAINERS = [
-    {'trainer':'FraudDistributedTrainer','is_distributed':True,'load_model':True,'load_meta':True},
-    {'trainer':'FraudTrainer','is_distributed':False,'load_model':True,'load_meta':True}
+    {'trainer':'FraudDistributedTrainer','is_distributed':True,'load_model':True,'load_meta':True,'model_root':'model_data/fraud_model'},
+    {'trainer':'CifarDistributedTrainer','is_distributed':True,'load_model':True,'load_meta':True,'model_root':'model_data/cifar_model'}
 ]
 
 VIEW_OPTIONS = [
@@ -69,8 +68,7 @@ class ViewResult:
                 time_taken = time_taken,
                 precision = precision,
                 recall = recall,
-                selected_split = '*Not Selected*' if 'selected_split' not in ds_meta else ds_meta['selected_split'],
-                absolute_correct_frauds = conf_mat.conf_mat[1][1]
+                global_shuffle = bundle.global_shuffle
             )
         
 @dataclass
@@ -155,7 +153,7 @@ def get_experiment(
 
 class DataView:
     def __init__(self):
-        st.markdown('# Fraud Data Exploration Dashboard')
+        st.markdown('# Distributed Training Data Exploration Dashboard')
         st.sidebar.title('Experiment Filter Options')
         selected_trainer = st.sidebar.selectbox(
             'Select A Trainer from The List',
@@ -310,18 +308,12 @@ class DataView:
             dataset_meta = '''
             ### Dataset Metadata For Distributed Experiment {exp_name}\n
             Sample Used : {is_sample}\n
-            Uniform Label Distribution  : {uniform_label_distribution}\n
-            Label Split Distribution : {label_dist}\n
-            Test Set Size : {test_set_portion} %\n
-            Selected Split : {selected_split}\n
+            Global Shuffle : {global_shuffle}\n
             '''.format(
                 **dict(
                     exp_name=bundle.created_on,
                     is_sample = ds_meta['sample'] is not None,
-                    uniform_label_distribution=ds_meta['uniform_label_distribution'],
-                    label_dist= ','.join([str(round(i*100,3))+' ' for i in ds_meta['label_split_values']]) if ds_meta['label_split_values'] else 'None',
-                    test_set_portion=str(ds_meta['test_set_portion']*100),
-                    selected_split = '*Not Selected*' if 'selected_split' not in ds_meta else ds_meta['selected_split']
+                    global_shuffle = bundle.global_shuffle
                 )
             )
             st.markdown(dataset_meta)
@@ -338,7 +330,7 @@ class DataView:
 
 class ResultsView:
     def __init__(self):
-        st.markdown('# Fraud Experiments Results')
+        st.markdown('# Distributed Training Experiments Results')
         st.sidebar.title('Experiment Filter Options')
         selected_trainer = st.sidebar.selectbox(
             'Select A Trainer from The List',
@@ -358,7 +350,7 @@ class ResultsView:
         self.show_results(filter_tuple,self.results)
     
     def show_results(self,filter_tuple,final_res:OverallResults):
-        selected_model,selected_learning_rate,selected_batch_size_list,selected_selected_splits = filter_tuple
+        selected_model,selected_learning_rate,selected_batch_size_list = filter_tuple
         df = final_res.df[
             (final_res.df['model_name'] == selected_model) \
                 &  (final_res.df['learning_rate'] == selected_learning_rate) \
@@ -376,51 +368,53 @@ class ResultsView:
         loss_fig = go.Figure()
         precision_figure = go.Figure()
         recall_figure = go.Figure()
-        absolute_fraud = go.Figure()
+        accuracy_fig = go.Figure()
         loss_fig.update_layout(title='Test Losses of Different Models')
         precision_figure.update_layout(title='Test Precision of Different Models')
         recall_figure.update_layout(title='Test Recall of Different Models')
-        absolute_fraud.update_layout(title='Total Frauds Detected by Different Models')
+        accuracy_fig.update_layout(title='Test Accuracy of Different Models')
+        # absolute_fraud.update_layout(title='Total Frauds Detected by Different Models')
 
-        for index,row in res.df.iterrows():
-            absolute_fraud.add_trace(
-                go.Bar(x=[row['selected_split']],\
-                        y=[row['absolute_correct_frauds']],\
-                        name=row['selected_split']+"__"+row['created_on']
-                        )
-            )
+        # for index,row in res.df.iterrows():
+        #     absolute_fraud.add_trace(
+        #         go.Bar(x=[row['selected_split']],\
+        #                 y=[row['absolute_correct_frauds']],\
+        #                 name=row['selected_split']+"__"+row['created_on']
+        #                 )
+        #     )
 
         for bundle in model_experiment_meta:
             epoch_results = []
             val_res_conf = [ConfusionMatrix(**v['confusion_matrix']) for v in bundle.validation_epoch_results]
             validation_results_df = pandas.DataFrame(bundle.validation_epoch_results)
             validation_results_df = validation_results_df[['epoch','losses','created_on','accuracy','batch_time']]
+            accuracy_fig.add_trace(
+                go.Scatter(x=validation_results_df['epoch'],y=validation_results_df['accuracy'],name='global_shuffle_'+str(bundle.global_shuffle),line_shape='linear'),
+            )
             loss_fig.add_trace(
-                go.Scatter(x=validation_results_df['epoch'],y=validation_results_df['losses'],name=bundle.dataset_metadata['selected_split'],line_shape='linear'),
+                go.Scatter(x=validation_results_df['epoch'],y=validation_results_df['losses'],name='global_shuffle_'+str(bundle.global_shuffle),line_shape='linear'),
             )
             recall_figure.add_trace(
-                go.Scatter(x=validation_results_df['epoch'],y=[r.recall_macro_average() for r in val_res_conf],name=bundle.dataset_metadata['selected_split'],line_shape='linear'),
+                go.Scatter(x=validation_results_df['epoch'],y=[r.recall_macro_average() for r in val_res_conf],name='global_shuffle_'+str(bundle.global_shuffle),line_shape='linear'),
             )
             precision_figure.add_trace(
-                go.Scatter(x=validation_results_df['epoch'],y=[r.precision_macro_average() for r in val_res_conf],name=bundle.dataset_metadata['selected_split'],line_shape='linear'),
+                go.Scatter(x=validation_results_df['epoch'],y=[r.precision_macro_average() for r in val_res_conf],name='global_shuffle_'+str(bundle.global_shuffle),line_shape='linear'),
             )
             
+        st.plotly_chart(accuracy_fig)
         st.plotly_chart(loss_fig)
         st.plotly_chart(precision_figure)
         st.plotly_chart(recall_figure)
-        st.plotly_chart(absolute_fraud)
 
     def create_filters(self,df):
         # Setup For Filters
         selected_model = st.sidebar.selectbox("Select Model", df["model_name"].unique())
         selected_learning_rate = st.sidebar.selectbox("Select Learning Rate", df["learning_rate"].unique())
         selected_batch_size_list = st.sidebar.selectbox("Select Batch Size", df["batch_size"].unique())
-        selected_selected_splits = st.sidebar.multiselect("Select Split ", df["selected_split"].unique())
 
         return (selected_model,\
                 selected_learning_rate,\
-                selected_batch_size_list,\
-                selected_selected_splits)
+                selected_batch_size_list)
 
 def run_app():
     selected_view = st.sidebar.selectbox('View Options',VIEW_OPTIONS)
