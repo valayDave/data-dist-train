@@ -307,12 +307,10 @@ class DataView:
         if bundle.distributed:
             dataset_meta = '''
             ### Dataset Metadata For Distributed Experiment {exp_name}\n
-            Sample Used : {is_sample}\n
             Global Shuffle : {global_shuffle}\n
             '''.format(
                 **dict(
                     exp_name=bundle.created_on,
-                    is_sample = ds_meta['sample'] is not None,
                     global_shuffle = bundle.global_shuffle
                 )
             )
