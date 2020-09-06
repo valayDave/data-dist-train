@@ -192,9 +192,11 @@ class DataView:
         loss_fig = go.Figure()
         precision_figure = go.Figure()
         recall_figure = go.Figure()
-        loss_fig.update_layout(title='Test Losses of Different Models')
-        precision_figure.update_layout(title='Test Precision of Different Models')
-        recall_figure.update_layout(title='Test Recall of Different Models')
+        
+        
+        loss_fig.update_layout(title='Test Losses of Different Models',yaxis_title="Loss",xaxis_title="Epoch")
+        precision_figure.update_layout(title='Test Precision of Different Models',yaxis_title="Precision",xaxis_title="Epoch")
+        recall_figure.update_layout(title='Test Recall of Different Models',yaxis_title="Recall",xaxis_title="Epoch")
         for bundle in model_experiment_meta:
             epoch_results = []
             val_res_conf = [ConfusionMatrix(**v['confusion_matrix']) for v in bundle.validation_epoch_results]
@@ -215,7 +217,7 @@ class DataView:
 
     def show_losses(self,bundle:ExperimentBundle):
         loss_fig = go.Figure()
-        loss_fig.update_layout(title='Validation Losses of Model : %s'%bundle.created_on)
+        loss_fig.update_layout(title='Validation Losses of Model : %s'%bundle.created_on,yaxis_title="Loss",xaxis_title="Epoch")
         validation_results_df = pandas.DataFrame(bundle.validation_epoch_results)
         validation_results_df = validation_results_df[['epoch','losses']]
         loss_fig.add_trace(
@@ -228,9 +230,9 @@ class DataView:
         precision_figure = go.Figure()
         recall_figure = go.Figure()
         val_res_conf = [ConfusionMatrix(**v['confusion_matrix']) for v in bundle.validation_epoch_results]
-        acc_fig.update_layout(title='Validation Accuracy of Model : %s'%bundle.created_on)
-        precision_figure.update_layout(title='Test Precision of Model : %s'%bundle.created_on)
-        recall_figure.update_layout(title='Test Recall of Model : %s'%bundle.created_on)
+        acc_fig.update_layout(title='Validation Accuracy of Model : %s'%bundle.created_on,yaxis_title="Accuracy",xaxis_title="Epoch")
+        precision_figure.update_layout(title='Test Precision of Model : %s'%bundle.created_on,yaxis_title="Pecision",xaxis_title="Epoch")
+        recall_figure.update_layout(title='Test Recall of Model : %s'%bundle.created_on,yaxis_title="Recall",xaxis_title="Epoch")
         validation_results_df = pandas.DataFrame(bundle.validation_epoch_results)
         validation_results_df = validation_results_df[['epoch','accuracy']]
         acc_fig.add_trace(
@@ -367,10 +369,10 @@ class ResultsView:
         precision_figure = go.Figure()
         recall_figure = go.Figure()
         accuracy_fig = go.Figure()
-        loss_fig.update_layout(title='Test Losses of Different Models')
-        precision_figure.update_layout(title='Test Precision of Different Models')
-        recall_figure.update_layout(title='Test Recall of Different Models')
-        accuracy_fig.update_layout(title='Test Accuracy of Different Models')
+        loss_fig.update_layout(title='Test Losses of Different Models',yaxis_title="Loss",xaxis_title="Epoch")
+        precision_figure.update_layout(title='Test Precision of Different Models',yaxis_title="Pecision",xaxis_title="Epoch")
+        recall_figure.update_layout(title='Test Recall of Different Models',yaxis_title="Recall",xaxis_title="Epoch")
+        accuracy_fig.update_layout(title='Test Accuracy of Different Models',yaxis_title="Accuracy",xaxis_title="Epoch")
         # absolute_fraud.update_layout(title='Total Frauds Detected by Different Models')
 
         # for index,row in res.df.iterrows():
