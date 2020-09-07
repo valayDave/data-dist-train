@@ -14,7 +14,7 @@ from datetime import datetime
 import plotly.graph_objects as go
 from fraud_network import FraudFFNetwork,FraudCNNModel
 from plotly.subplots import make_subplots
-
+import numpy as np
 
 # MODEL_ROOTPATH = 'remote-model'
 MODEL_ROOTPATH = 'model_data/fraud_model'
@@ -53,6 +53,16 @@ class ViewResult:
         # Score Extraction
         precision = round(conf_mat.precision_macro_average(),3)
         recall = round(conf_mat.recall_macro_average(),3)
+        train_times = []
+        for index in range(len(bundle.train_epoch_results)-1):
+            t0_start = bundle.validation_epoch_results[index]
+            t1_start = bundle.train_epoch_results[index+1]
+            time_diff = datetime.strptime(t1_start['created_on'],DATEFORMAT) - datetime.strptime(t0_start['created_on'],DATEFORMAT)  
+            train_times.append(int(time_diff.seconds))
+        train_times = np.array(train_times)
+        average_train_time = train_times.mean()
+        standard_deviation  = train_times.std()
+        model_name = model.model_name if model.model_name is not None else '*Model-Name-Not-Logged*'
         # Make One Object of all data and return it. 
         return dict(
                 created_on = bundle.created_on,
@@ -61,14 +71,19 @@ class ViewResult:
                 batch_size=bundle.train_args['batch_size'],
                 num_epochs=len(bundle.train_epoch_results),
                 learning_rate=model.optimizer_args['lr'],
-                model_name = model.model_name if model.model_name is not None else '*Model-Name-Not-Logged*',
+                model_name = model_name,
                 training_note = bundle.note if bundle.note is not None else '*No Training Note*',
                 train_start_time=start_date,
                 train_end_time = end_date,
                 time_taken = time_taken,
                 precision = precision,
                 recall = recall,
-                global_shuffle = bundle.global_shuffle
+                global_shuffle = bundle.global_shuffle,
+                train_time_average=average_train_time,
+                train_time_standard_deviation=standard_deviation,
+                train_time_high = average_train_time+standard_deviation,
+                train_time_low = average_train_time-standard_deviation,
+                exp_name = f'{model_name}-global-shuffle-{str(bundle.global_shuffle)}-'+bundle.created_on
             )
         
 @dataclass
@@ -350,12 +365,14 @@ class ResultsView:
         self.show_results(filter_tuple,self.results)
     
     def show_results(self,filter_tuple,final_res:OverallResults):
-        selected_model,selected_learning_rate,selected_batch_size_list = filter_tuple
+        selected_model,selected_learning_rate,selected_batch_size_list,select_exp_names = filter_tuple
         df = final_res.df[
             (final_res.df['model_name'] == selected_model) \
                 &  (final_res.df['learning_rate'] == selected_learning_rate) \
                 & (final_res.df['batch_size'] == selected_batch_size_list) \
         ]
+        if len(select_exp_names) > 0:
+            df = df[final_res.df['exp_name'].isin(select_exp_names)]
         selected_experiments = [final_res.experiment_list[i] for i in df.index]
         st.dataframe(df)
         abs_res = OverallResults(experiment_list=selected_experiments)
@@ -383,11 +400,28 @@ class ResultsView:
         #                 )
         #     )
 
+        train_time_candle_stick = go.Figure(
+            data = [
+                go.Candlestick(
+                    x = res.df['exp_name'],
+                    open = res.df['train_time_average'],
+                    high = res.df['train_time_high'],
+                    low = res.df['train_time_low'],
+                    close= res.df['train_time_average'])
+            ]
+        )
+        train_time_candle_stick.update_layout(
+            title='Mean and Standard Deviation in Train Time across Different Experiements With/Without Shuffle (In Seconds)',\
+            yaxis_title="Time To Complete One Train Loop",\
+            xaxis_title="Experiment Name",\
+            xaxis_rangeslider_visible=False
+        )
         for bundle in model_experiment_meta:
             epoch_results = []
             val_res_conf = [ConfusionMatrix(**v['confusion_matrix']) for v in bundle.validation_epoch_results]
             validation_results_df = pandas.DataFrame(bundle.validation_epoch_results)
             validation_results_df = validation_results_df[['epoch','losses','created_on','accuracy','batch_time']]
+           
             accuracy_fig.add_trace(
                 go.Scatter(x=validation_results_df['epoch'],y=validation_results_df['accuracy'],name='global_shuffle_'+str(bundle.global_shuffle),line_shape='linear'),
             )
@@ -405,6 +439,7 @@ class ResultsView:
         st.plotly_chart(loss_fig)
         st.plotly_chart(precision_figure)
         st.plotly_chart(recall_figure)
+        st.plotly_chart(train_time_candle_stick)
 
     def create_filters(self,df):
         # Setup For Filters
@@ -412,9 +447,17 @@ class ResultsView:
         selected_learning_rate = st.sidebar.selectbox("Select Learning Rate", df["learning_rate"].unique())
         selected_batch_size_list = st.sidebar.selectbox("Select Batch Size", df["batch_size"].unique())
 
+        df_inter = df[
+            (df['model_name'] == selected_model) \
+                &  (df['learning_rate'] == selected_learning_rate) \
+                & (df['batch_size'] == selected_batch_size_list) \
+        ]
+
+        select_exp_names = st.sidebar.multiselect("Select Individual Experiments", df_inter["exp_name"].unique())
         return (selected_model,\
                 selected_learning_rate,\
-                selected_batch_size_list)
+                selected_batch_size_list,\
+                select_exp_names)
 
 def run_app():
     selected_view = st.sidebar.selectbox('View Options',VIEW_OPTIONS)
