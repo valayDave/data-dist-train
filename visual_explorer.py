@@ -63,6 +63,12 @@ class ViewResult:
         average_train_time = train_times.mean()
         standard_deviation  = train_times.std()
         model_name = model.model_name if model.model_name is not None else '*Model-Name-Not-Logged*'
+        if model_name == 'ResNet':
+            if model.model_args['num_blocks'] == [2,2,2,2]:
+                model_name = 'ResNet18'
+            elif model.model_args['num_blocks'] == [3, 4, 6, 3]:
+                model_name = 'ResNet50'
+        # print(model.model_args)
         # Make One Object of all data and return it. 
         return dict(
                 created_on = bundle.created_on,
@@ -83,7 +89,7 @@ class ViewResult:
                 train_time_standard_deviation=standard_deviation,
                 train_time_high = average_train_time+standard_deviation,
                 train_time_low = average_train_time-standard_deviation,
-                exp_name = f'{model_name}-global-shuffle-{str(bundle.global_shuffle)}-'+bundle.created_on
+                exp_name = f'{model_name}-global-shuffle-{str(bundle.global_shuffle)}'
             )
         
 @dataclass
@@ -399,7 +405,6 @@ class ResultsView:
         #                 name=row['selected_split']+"__"+row['created_on']
         #                 )
         #     )
-
         train_time_candle_stick = go.Figure(
             data = [
                 go.Candlestick(
