@@ -356,6 +356,9 @@ class DistributedTrainer(BaseTrainer):
                 )
             if self.dist_args.global_shuffle:
                 self.shuffe_worker_dataset(shuffle=True)
+                train_data_loader = self.get_train_dataloader(rank)
+                test_data_loader = self.get_test_dataloader(rank)
+        
         torch.distributed.barrier()
         if self.on_completion_checkpoint_validaiton():
             if self.dist_args.global_shuffle:
@@ -399,6 +402,7 @@ class DistributedTrainer(BaseTrainer):
     
     def get_train_dataloader(self,rank):
         # TODO : Change self.dataset to rypc based distributed dataset. 
+        self.logger.info("Creating New Train Loader")
         tensor_dataset = self.dataset.get_train_dataset(rank)
         data_loader = torch.utils.data.DataLoader(
             tensor_dataset,\

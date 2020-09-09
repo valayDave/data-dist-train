@@ -196,6 +196,7 @@ class DistributedIndexSamplerServer(rpyc.Service):
         print(f"Called Shuffle For Connection ID : {connection_id}")
         # self.create_datastore(self.list_length,self.num_workers,self.block_size)
         self.session_map[connection_id].shuffle_datastore()
+        self.save_map()
 
     def exposed_get_indexes(self,connection_id):
         print(f"Getting Indexes Connection ID : {connection_id}")
