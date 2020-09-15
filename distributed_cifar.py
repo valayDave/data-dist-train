@@ -82,6 +82,7 @@ def cli():
 @click.option('--note',default=None,type=str,help='Some Note to Add while Saving Experiment')
 @click.option('--block_size',default=2,type=int,help='Block Size For the Dispatcher')
 @click.option('--dispatching_approach','--da',default=ALLOWED_DISPATCHING_METHODS[0],type=click.Choice(ALLOWED_DISPATCHING_METHODS),help='Approach to take for Dispatching data')
+@click.option('--checkpoint_frequency',default=30,help='Checkpoint Model Every N Epochs')
 def distributed(\
                 batch_size=128,
                 epochs=128,
@@ -98,6 +99,7 @@ def distributed(\
                 note=None,
                 block_size=2,
                 dispatching_approach=ALLOWED_DISPATCHING_METHODS[0],
+                checkpoint_frequency=10
                 ):
     run_dist_trainer(
         batch_size = batch_size,
@@ -115,6 +117,7 @@ def distributed(\
         note = note,
         block_size = block_size,
         dispatching_approach = dispatching_approach,
+        checkpoint_frequency=checkpoint_frequency
     )
 
 @cli.command(help='Train CIFAR-10 Dataset With Distributed Training And Shuffling data across workers at Every Epoch')
@@ -134,6 +137,7 @@ def distributed(\
 @click.option('--block_size',default=2,type=int,help='Block Size For the Dispatcher')
 @click.option('--sampler_host',default='127.0.0.1',help='IP address of the Remote Datastore where the Trainer will get the Dataset from at Each epoch')
 @click.option('--sampler_port',default=5003,help='Port of the Remote Datastore where the Trainer will get the Dataset from at Each epoch')
+@click.option('--checkpoint_frequency',default=30,help='Checkpoint Model Every N Epochs')
 def distributed_global_shuffle(\
                 batch_size=128,
                 epochs=128,
@@ -150,7 +154,8 @@ def distributed_global_shuffle(\
                 note=None,
                 block_size=2,
                 sampler_host='127.0.0.1',
-                sampler_port=5003
+                sampler_port=5003,
+                checkpoint_frequency=10
                 ):
     run_dist_trainer_global_suffle(
         batch_size = batch_size,
@@ -168,7 +173,8 @@ def distributed_global_shuffle(\
         note = note,
         block_size=block_size,
         sampler_host = sampler_host,
-        sampler_port = sampler_port
+        sampler_port = sampler_port,
+        checkpoint_frequency=checkpoint_frequency
         )
 
 
@@ -184,7 +190,8 @@ def run_trainer_from_dataset(batch_size=128,
                 model='ResNet18',
                 world_size=5,
                 note=None,
-                distributed_dataset=None):
+                distributed_dataset=None,
+                checkpoint_frequency=10):
     
     nnargs = CifarExpNetworkArgs()
     model_class,args = FACTORY.get_model(model)
@@ -198,6 +205,7 @@ def run_trainer_from_dataset(batch_size=128,
             shuffle=True,
             num_epochs=epochs,
             checkpoint_args = CheckpointingArgs(
+                checkpoint_frequency=checkpoint_frequency,
                 path = checkpoint_dir,
                 save_experiment=not dont_save,
             ),
@@ -248,7 +256,8 @@ def run_dist_trainer(batch_size=128,
                 world_size=5,
                 note=None,
                 block_size = 2,
-                dispatching_approach = ALLOWED_DISPATCHING_METHODS[0]):
+                dispatching_approach = ALLOWED_DISPATCHING_METHODS[0],
+                checkpoint_frequency=10):
 
     dispatcher_params = DispatcherControlParams(
         num_workers=world_size,
@@ -270,6 +279,7 @@ def run_dist_trainer(batch_size=128,
             shuffle=True,
             num_epochs=epochs,
             checkpoint_args = CheckpointingArgs(
+                checkpoint_frequency=checkpoint_frequency,
                 path = checkpoint_dir,
                 save_experiment=not dont_save,
         )
@@ -326,7 +336,8 @@ def run_dist_trainer_global_suffle(
     note=None,
     block_size=2,
     sampler_host='127.0.0.1',
-    sampler_port=5003
+    sampler_port=5003,
+    checkpoint_frequency=10
     ):
     train_set,test_set = cifar_dataset.create_dataset(sample=sample)
     sampler_session_id = DistributedSampler.create_session(len(train_set),world_size,block_size,host=sampler_host,port=sampler_port)
@@ -357,6 +368,7 @@ def run_dist_trainer_global_suffle(
             shuffle=True,
             num_epochs=epochs,
             checkpoint_args = CheckpointingArgs(
+                checkpoint_frequency=checkpoint_frequency,
                 path = checkpoint_dir,
                 save_experiment=not dont_save,
         )
