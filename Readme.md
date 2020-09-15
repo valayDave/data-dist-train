@@ -71,3 +71,9 @@ python distributed_cred.py distributed-global-shuffle --sample 200 --model FF --
 1. Batchsize Will influence the number of minibatches of distributed workers. Gradient syncing happens for works so imbalanced minibatches can cause a deadlock for gradient syncing due to Pytorch's DistributedDataParallel Implementation
 
 2. Metaflow can be used a the version management and infrastructure bundling layer. 
+
+
+## Running Training 
+
+1. ` cd data-dist-train && source .env/bin/activate` : Activates Environment
+2. `nohup python sampler_service.py > sampler_log.log &` : Runs the Sampler Server

@@ -264,13 +264,14 @@ class DistributedTrainer(BaseTrainer):
         super(DistributedTrainer, self).__init__(**kwargs)
         self.rank = None
         self.distributed_sampler_args = distributed_sampler_args
+        self.world_size = None
         
     def setup(self,rank,world_size):
         proc_name = self.__class__.__name__+'__'+str(rank)
         self.logger = create_logger(proc_name)
         os.environ['MASTER_ADDR'] = self.dist_args.master_ip
         os.environ['MASTER_PORT'] = self.dist_args.master_port
-
+        self.world_size = world_size
         global_shuffle = self.dist_args.global_shuffle
         if global_shuffle:
             if self.distributed_sampler_args is None:
@@ -451,7 +452,8 @@ class DistributedTrainer(BaseTrainer):
             dataset_metadata = dataset_meta,
             rank = self.rank,
             distributed=True,
-            global_shuffle = self.dist_args.global_shuffle
+            global_shuffle = self.dist_args.global_shuffle,
+            world_size = self.world_size
         )
         return (experimental_bundle,model_bundle)
 

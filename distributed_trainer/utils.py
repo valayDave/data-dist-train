@@ -160,6 +160,7 @@ class ExperimentBundle:
     distributed:bool=False
     note:str=None
     global_shuffle:bool=False
+    world_size:int=1
     
 @dataclass
 class ModelBundle:
