@@ -313,7 +313,7 @@ def run_dist_trainer_global_suffle(batch_size=128,
             shuffle=True,
             num_epochs=epochs,
             checkpoint_args = CheckpointingArgs(
-                checkpoint_frequency= ,
+                checkpoint_frequency= checkpoint_frequency,
                 path = checkpoint_dir,
                 save_experiment=not dont_save,
         )
