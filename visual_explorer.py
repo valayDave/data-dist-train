@@ -89,7 +89,8 @@ class ViewResult:
                 train_time_standard_deviation=standard_deviation,
                 train_time_high = average_train_time+standard_deviation,
                 train_time_low = average_train_time-standard_deviation,
-                exp_name = f'{model_name}-global-shuffle-{str(bundle.global_shuffle)}'
+                exp_name = f'{model_name}-global-shuffle-{str(bundle.global_shuffle)}',
+                world_size = bundle.world_size
             )
         
 @dataclass
@@ -371,11 +372,12 @@ class ResultsView:
         self.show_results(filter_tuple,self.results)
     
     def show_results(self,filter_tuple,final_res:OverallResults):
-        selected_model,selected_learning_rate,selected_batch_size_list,select_exp_names = filter_tuple
+        selected_model,selected_learning_rate,selected_batch_size_list,selected_world_size,select_exp_names = filter_tuple
         df = final_res.df[
             (final_res.df['model_name'] == selected_model) \
                 &  (final_res.df['learning_rate'] == selected_learning_rate) \
                 & (final_res.df['batch_size'] == selected_batch_size_list) \
+                & (final_res.df['world_size'] == selected_world_size) \
         ]
         if len(select_exp_names) > 0:
             df = df[final_res.df['exp_name'].isin(select_exp_names)]
@@ -451,17 +453,19 @@ class ResultsView:
         selected_model = st.sidebar.selectbox("Select Model", df["model_name"].unique())
         selected_learning_rate = st.sidebar.selectbox("Select Learning Rate", df["learning_rate"].unique())
         selected_batch_size_list = st.sidebar.selectbox("Select Batch Size", df["batch_size"].unique())
-
+        selected_world_size = st.sidebar.selectbox("Select World Size/Num Workers", df["world_size"].unique())
         df_inter = df[
             (df['model_name'] == selected_model) \
                 &  (df['learning_rate'] == selected_learning_rate) \
                 & (df['batch_size'] == selected_batch_size_list) \
+                & (df['world_size'] == selected_world_size) \
         ]
 
         select_exp_names = st.sidebar.multiselect("Select Individual Experiments", df_inter["exp_name"].unique())
         return (selected_model,\
                 selected_learning_rate,\
                 selected_batch_size_list,\
+                selected_world_size,\
                 select_exp_names)
 
 def run_app():
