@@ -1,10 +1,15 @@
 from dataclasses import dataclass,field,asdict
 import random
 from typing import List
+from threading import Thread
 from .dataset import DistributedDataset
+from .utils import save_json_to_file,load_json_from_file,dir_exists
+import rpyc
+rpyc.core.protocol.DEFAULT_CONFIG['allow_pickle'] = True
+
 ALLOWED_DISPATCHING_METHODS = [
-    'random',
-    'round_robin'
+    'round_robin',
+    'random'
 ]
 @dataclass
 class DispatcherControlParams:
@@ -23,7 +28,6 @@ class DispatcherControlParams:
 
     # Before Dispatch:
     shuffle_before:bool=False
-    shuffle_after:bool=True
 
     
     def validate(self):
@@ -50,6 +54,12 @@ class DataBlock:
         return len(self.data_item_indexes)
 
 class BlockDistributedDataset(DistributedDataset):
+    """BlockDistributedDataset [summary]
+    This is the dataset given to allworkers. \n
+    It contains the complete data and indexes that they need to to create a `TensorDataset`.\n  
+    ### Methods of `get_train_dataset` and `get_test_dataset` need to be overridden leveraging while leveraging the `List[DataBlock]`s
+    
+    """
     def __init__(self,train_dataset,blocks:List[DataBlock],test_dataset=None,metadata=None):
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
@@ -87,8 +97,190 @@ class DataStore:
         Create a DistributedDataset of `UsedClass` to create a BlockDistributedDataset for training 
         '''
         return UsedClass(self.dataset,self.blocks,test_dataset=test_set,metadata=asdict(self.control_params),**kwargs)
+    
+    @classmethod
+    def from_json(cls,json_object):
+        blocks = []
+        for blk in json_object['blocks']:
+            blocks.append(DataBlock(**blk))
+        json_object['blocks'] = blocks
+        if json_object['control_params'] is not None:
+            json_object['control_params'] = DispatcherControlParams(**json_object['control_params'])
+        return cls(**json_object)
+
+class SamplerSession:
+    def __init__(self,list_length,num_workers,block_size,datastore=None):
+        self.list_length = list_length
+        self.num_workers = num_workers
+        self.block_size = block_size
+        self.datastore = None
+        if datastore is None:
+            self.shuffle_datastore()
+        else:
+            self.datastore= datastore
+        
+    def shuffle_datastore(self):
+        # self.datastore = 
+        disp = Dispatcher(
+            DispatcherControlParams(
+                block_size=self.block_size,
+                num_workers=self.num_workers,
+                approach='round_robin',
+                shuffle_before=True,
+            ),
+            [i for i in range(self.list_length)],
+            None
+        )
+        self.datastore = disp.run()
+    
+    def to_json(self):
+        return asdict(self.datastore)
+
+class DistributedIndexSamplerServer(rpyc.Service):
+    """DistributedIndexSamplerServer 
+    - Every worker will connect with this singular distributed sampler server. 
+    - Running Strategy
+        1. Rank 0 : Connects to create an index list and call shuffle. 
+        2. `connection_id` will be used to do reference the sampler being used. 
+        3. if multiple training sessions can use the same sampling server. 
+    """
+    def __init__(self,session_storage_path='./sampler_session.json'):
+        rpyc.Service.__init__(self)
+        self.storage_path = session_storage_path
+        self.session_map = self.load_map() # {conn_id : SamplerSession}
+        
+    def load_map(self): # Call on init of Service.  # Load Datastore and give it to the sampler session
+        if not dir_exists(self.storage_path): # If no File in FS. return {}
+            return {}
+        session_map = load_json_from_file(self.storage_path)
+        for conn_id in session_map: # Create a new Sampler Session From the Datastore stored on file. 
+            datastore = DataStore.from_json(session_map[conn_id])
+            session_map[conn_id] = SamplerSession(
+                len(datastore.dataset),
+                len(datastore.blocks),
+                datastore.control_params.block_size,
+                datastore=datastore
+            )
+        return session_map
+    
+    def save_map(self): # Save Datastore
+        sess_json = {}
+        for k in self.session_map:
+            sess_json[k] = self.session_map[k].to_json() # Save Datastore of each session
+        save_json_to_file(sess_json,self.storage_path)
 
 
+    def exposed_init(self,list_length,num_workers,block_size) -> int: # Returns a ConnID that will be used by other workers to connect
+        """exposed_init 
+        This will create a sampler sessionId which will be used to create a 
+        DataStore. 
+        This ID Will be loaded on new Workers too 
+        :param list_length: [description]
+        :param num_workers: [description]
+        :param block_size: [description]
+        """
+        return self.create_datastore(list_length,num_workers,block_size)
+
+    def create_datastore(self,list_length,num_workers,block_size):
+        conn_id = str(random.randint(0,10000))
+        print(f"Creating Datastore For Connection ID : {conn_id}")
+        session = SamplerSession(
+            list_length,num_workers,block_size
+        )
+        self.session_map[conn_id] = session
+        self.save_map()
+        return conn_id
+       
+
+    def exposed_shuffle(self,connection_id):
+        print(f"Called Shuffle For Connection ID : {connection_id}")
+        # self.create_datastore(self.list_length,self.num_workers,self.block_size)
+        self.session_map[connection_id].shuffle_datastore()
+        self.save_map()
+
+    def exposed_get_indexes(self,connection_id):
+        print(f"Getting Indexes Connection ID : {connection_id}")
+        print(self.session_map.keys())
+        if str(connection_id) not in self.session_map:
+            return []
+        index_lists = tuple(
+            tuple(block.data_item_indexes) for block in self.session_map[connection_id].datastore.blocks
+        )
+        brine_op = rpyc.core.brine.dump(index_lists)
+        return brine_op
+
+    def exposed_delete_session(self,connection_id):
+        del self.session_map[connection_id]
+        self.save_map()
+
+
+@dataclass
+class SamplerArgs:
+    block_size:int=2
+    num_workers:int=5
+    port:int=5000 # Port to DistributedIndexSampler
+    host:str='127.0.0.1' # host of the DistributedIndexSampler
+    UsedClass:BlockDistributedDataset=BlockDistributedDataset
+    connection_id:str=None # Id of the Remote Connection
+        
+        
+
+class DistributedSampler:
+    '''
+
+    '''
+    def __init__(self,
+                sampler_args:SamplerArgs,
+                train_set=[],
+                test_set=None): 
+        self.train_set = train_set
+        self.num_workers = sampler_args.num_workers
+        self.test_set = test_set
+        self.UsedClass = sampler_args.UsedClass
+        self.port= sampler_args.port
+        self.host= sampler_args.host
+
+        # Do init with service to create the remote sampler session
+        if sampler_args.connection_id is None:
+            self.connection_id = self.create_session(len(train_set),sampler_args.num_workers,sampler_args.block_size,host=sampler_args.host,port=sampler_args.port)
+        else:
+            self.connection_id = sampler_args.connection_id
+
+
+    def shuffle(self):
+        '''
+        Call Remote Shuffle here. 
+        '''
+        conn = rpyc.connect(port=self.port,host=self.host,config = rpyc.core.protocol.DEFAULT_CONFIG)
+        conn.root.shuffle(self.connection_id)
+        conn.close()
+
+    def get_distributed_dataset(self):
+        '''
+        Get Indexes from the `DistributedDataStore` and then transform that into a 
+        `BlockDistributedDataset`
+        '''
+        conn = rpyc.connect(port=self.port,host=self.host)
+        index_lists_encoded = conn.root.get_indexes(self.connection_id)
+        index_lists = rpyc.core.brine.load(index_lists_encoded)
+        # THERE IS A MASSIVE SERIALIISATION ISSUE WITH RPYC. 
+        # ALL data Needs to Be serialised Properly!. 
+        data_blocks = [DataBlock(data_item_indexes=list(idx_list)) for idx_list in index_lists]
+        conn.close()
+        return self.UsedClass(self.train_set,data_blocks,test_dataset=self.test_set,metadata=dict(distributed_sampler=True))
+    
+    def close_session(self):
+        conn = rpyc.connect(port=self.port,host=self.host)
+        index_lists = conn.root.delete_session(self.connection_id)
+        conn.close()
+
+    @staticmethod
+    def create_session(list_length,workers,block_size,host='localhost',port=5003):
+        conn = rpyc.connect(port=port,host=host,config = rpyc.core.protocol.DEFAULT_CONFIG)
+        conn_id  = conn.root.init(list_length,workers,block_size)
+        conn.close()
+        return conn_id
+    
 
 class Dispatcher:
     '''
@@ -127,15 +319,15 @@ class Dispatcher:
         block_map = self.create_blocks(self.control_params.num_workers)
         flush_items = []
         flush_counter = 0
-        if self.control_params.shuffle_before:
-            random.shuffle(self.train_dataset)
         item_indexes = [i for i in range(len(self.train_dataset))]
-        for index in item_indexes:
-            if index % self.control_params.block_size == 0 and index > 0 and self.control_params.block_size!=1:
+        if self.control_params.shuffle_before:
+            random.shuffle(item_indexes)
+        for index_val,item in enumerate(item_indexes):
+            if index_val % self.control_params.block_size == 0 and index_val > 0 and self.control_params.block_size!=1:
                 self.dispatch_block(flush_items,block_map,flush_counter)
                 flush_counter+=1
                 flush_items = []
-            flush_items.append(index)
+            flush_items.append(item)
         
         if len(flush_items)  > 0:
             self.dispatch_block(flush_items,block_map,flush_counter)
@@ -162,9 +354,4 @@ class Dispatcher:
 
         selected_worker_block.update(index_list)
         return 
-        
-
-
-        
-        
         

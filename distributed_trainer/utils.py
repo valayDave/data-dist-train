@@ -3,9 +3,26 @@ import numpy as np
 from typing import List
 import os 
 import pandas as pd
-import tabulate
+import json
 from datetime import datetime
 from dataclasses import dataclass,field
+
+
+def dir_exists(dir_path):
+  try:
+    os.stat(dir_path)
+    return True
+  except:
+    return False
+
+def load_json_from_file(file_path):
+    with open(file_path,'r') as f:
+        json_file = json.load(f)
+    return json_file
+
+def save_json_to_file(json_dict,file_path):
+    with open(file_path,'w') as f:
+        json.dump(json_dict,f)
 
 
 #https://stackoverflow.com/questions/35572000/how-can-i-plot-a-confusion-matrix
@@ -72,6 +89,7 @@ class ConfusionMatrix:
             self.conf_mat[vec[0]][vec[1]]+=1
 
     def __str__(self):
+        import tabulate # Make it a soft dependency
         df = pd.DataFrame(self.conf_mat,['True_'+str(i) for i in self.labels],['Pred_'+str(i) for i in self.labels])
         return tabulate.tabulate(df,tablefmt='github', headers='keys')
 
@@ -141,6 +159,8 @@ class ExperimentBundle:
     rank:int = None
     distributed:bool=False
     note:str=None
+    global_shuffle:bool=False
+    world_size:int=1
     
 @dataclass
 class ModelBundle:
@@ -153,6 +173,7 @@ class ModelBundle:
     optimizer_args:dict=None
     loss_fn:str=None
     model_name:str=None
+    global_shuffle:bool=False
 
 @dataclass
 class DistributionArgs:
@@ -185,4 +206,5 @@ class DistTrainerArgs:
     master_ip:str='127.0.0.1'
     master_port:str='12355'
     world_size:int=5
+    global_shuffle:bool=False
     

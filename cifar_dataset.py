@@ -4,14 +4,18 @@ from distributed_trainer.data_dispatcher import \
     DispatcherControlParams,\
     BlockDistributedDataset,\
     DataBlock,\
-    ALLOWED_DISPATCHING_METHODS
+    ALLOWED_DISPATCHING_METHODS,\
+    DistributedSampler,\
+    SamplerArgs
 
 import random
 import torchvision
 import torch
 from torch.utils.data import TensorDataset
 import torchvision.transforms as transforms
+import click
 # torchvision.datasets.CIFAR10('./',download=True)
+
 
 class CifarBlockDataset(BlockDistributedDataset):
 
@@ -58,7 +62,11 @@ class CifarBlockDataset(BlockDistributedDataset):
         return [i for i in range(10)]
 
 
-def get_distributed_dataset(dispatcher_args:DispatcherControlParams):
+
+def create_dataset(sample=None):
+    '''
+    Creating the same tensor dataset from FS. 
+    '''
     transform_train = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
@@ -70,10 +78,15 @@ def get_distributed_dataset(dispatcher_args:DispatcherControlParams):
     ])
     train_st = torchvision.datasets.CIFAR10('./',transform=transform_train)
     test_st = torchvision.datasets.CIFAR10('./',train=False,transform=transform_test)
-    if dispatcher_args.sample is not None:
-        train_st = [ train_st[data_index] for data_index in random.sample([i for i in range(len(train_st))],dispatcher_args.sample)]
-        test_st = [ test_st[data_index] for data_index in random.sample([i for i in range(len(test_st))],dispatcher_args.sample)]
+    if sample is not None:
+        train_st = [ train_st[data_index] for data_index in random.sample([i for i in range(len(train_st))],sample)]
+        test_st = [ test_st[data_index] for data_index in random.sample([i for i in range(len(test_st))],sample)]
+    return train_st,test_st
 
+
+
+def get_distributed_dataset(dispatcher_args:DispatcherControlParams):
+    train_st, test_st = create_dataset(dispatcher_args.sample)
     disp = Dispatcher(dispatcher_args,\
                     CifarBlockDataset.transform(train_st),\
                     CifarBlockDataset.transform(test_st))

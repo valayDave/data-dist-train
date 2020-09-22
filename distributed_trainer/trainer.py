@@ -26,6 +26,8 @@ from .utils import \
     DistributionArgs,\
     ModelBundle
 
+from .data_dispatcher import DistributedSampler,SamplerArgs,BlockDistributedDataset
+
 from .dataset import\
          Dataset,\
         DistributedDataset
@@ -257,16 +259,33 @@ class DistributedTrainer(BaseTrainer):
     """DistributedTrainer 
 
     """
-    def __init__(self,dist_args=DistTrainerArgs(),**kwargs):
+    def __init__(self,dist_args=DistTrainerArgs(),distributed_sampler_args=None,**kwargs):
         self.dist_args = dist_args
         super(DistributedTrainer, self).__init__(**kwargs)
         self.rank = None
+        self.distributed_sampler_args = distributed_sampler_args
+        self.world_size = None
         
     def setup(self,rank,world_size):
         proc_name = self.__class__.__name__+'__'+str(rank)
         self.logger = create_logger(proc_name)
         os.environ['MASTER_ADDR'] = self.dist_args.master_ip
         os.environ['MASTER_PORT'] = self.dist_args.master_port
+        self.world_size = world_size
+        global_shuffle = self.dist_args.global_shuffle
+        if global_shuffle:
+            if self.distributed_sampler_args is None:
+                raise Exception("Global Shuffle Requires SamplerArgs instantiate the sampler and get New Indices every Epoch.\nPlease instantiate Trainer with `distributed_sampler_args` property.\n Run ``$ python -m distributed_trainer.data_dispatcher `` to Start the sampler service.  ")
+            if not isinstance(self.dataset,BlockDistributedDataset):
+                raise Exception(f"Global Shuffle Requires A Child of the BlockDistributedDataset and Not {self.dataset.__class__.__name__}")
+            if self.distributed_sampler_args.connection_id is None:
+                raise Exception(f'A Global Shuffle Requres `connection_id` arguement in SamplerArgs. Please create Connection via DistributedSampler. create_session(list_length,workers,block_size,..)')
+            self.distributed_sampler = DistributedSampler(
+                self.distributed_sampler_args,
+                train_set = self.dataset.train_dataset,
+                test_set= self.dataset.test_dataset,
+            )
+            
         # initialize the process group
         if self.dist_args.backend == 'gloo':
             dist.init_process_group(self.dist_args.backend, rank=rank, world_size=world_size,init_method='env://'+self.dist_args.master_ip+':'+self.dist_args.master_port)
@@ -284,6 +303,24 @@ class DistributedTrainer(BaseTrainer):
             device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
             self.neural_network.to(device)
             self.rank = device
+
+    def shuffe_worker_dataset(self,shuffle=False):
+        self.logger.debug("Extracting New Dataset From Proxy")
+        if not shuffle:
+            self.dataset = self.distributed_sampler.get_distributed_dataset()
+            self.logger.info("Extracted Neew Dataset From Proxy")
+            return 
+        if self.rank == 0:
+            self.distributed_sampler.shuffle()
+            self.logger.info("Shuffled Proxy Datastore")
+        # setting barrier here as any process coming heere with shuffle arg 
+        # should wait until the datastore is completely shuffled. 
+        torch.distributed.barrier()
+        # self.logger.info("Crossed Barrier")
+        self.dataset = self.distributed_sampler.get_distributed_dataset()
+        self.logger.info("Set Shuffled Dataset On Client Again")
+        
+
 
     def run(self,rank,world_size):
         self.setup(rank,world_size)
@@ -317,10 +354,17 @@ class DistributedTrainer(BaseTrainer):
                                 str(epoch)),
                     exp_bundle,
                     model_bundle
-                )       
+                )
+            if self.dist_args.global_shuffle:
+                self.shuffe_worker_dataset(shuffle=True)
+                train_data_loader = self.get_train_dataloader(rank)
+                test_data_loader = self.get_test_dataloader(rank)
         
         torch.distributed.barrier()
         if self.on_completion_checkpoint_validaiton():
+            if self.dist_args.global_shuffle:
+                self.distributed_sampler.close_session()
+                self.logger.info('Session On Sampler Deleted. ')
             exp_bundle,model_bundle = self.create_experiment_bundle(experiment_results,validation_results)
             self.logger.info("Created Bundle For Checkpoint On Rank %s For Path %s"%(str(self.rank),self.checkpoint_save_path))
             self.save_checkpoint(
@@ -358,6 +402,8 @@ class DistributedTrainer(BaseTrainer):
           
     
     def get_train_dataloader(self,rank):
+        # TODO : Change self.dataset to rypc based distributed dataset. 
+        self.logger.info("Creating New Train Loader")
         tensor_dataset = self.dataset.get_train_dataset(rank)
         data_loader = torch.utils.data.DataLoader(
             tensor_dataset,\
@@ -396,7 +442,7 @@ class DistributedTrainer(BaseTrainer):
             optimizer_args = self.network_args.optimizer_args_dict,
             loss_fn = str(self.loss_fn),
             train_args = dataclasses.asdict(self.training_args),
-
+            global_shuffle = self.dist_args.global_shuffle
         )
         experimental_bundle = ExperimentBundle(
             note = self.note,
@@ -405,7 +451,9 @@ class DistributedTrainer(BaseTrainer):
             train_args = dataclasses.asdict(self.training_args),
             dataset_metadata = dataset_meta,
             rank = self.rank,
-            distributed=True
+            distributed=True,
+            global_shuffle = self.dist_args.global_shuffle,
+            world_size = self.world_size
         )
         return (experimental_bundle,model_bundle)
 
@@ -434,15 +482,19 @@ def create_trainer(rank,\
                     dataset,\
                     dist_args,\
                     trainer,
-                    note,\
-                    namespace):
+                    note,
+                    namespace,\
+                    distributed_sampler_args):
+    print(f"Created Trainer for Number {rank} and {world_size}")
     training_prog = trainer(
         network_args=network_args,
         training_args=training_args,
         dataset=dataset,
         dist_args=dist_args,
-        note=note
+        note=note,
+        distributed_sampler_args=distributed_sampler_args
     )
+    
     training_prog.run(rank,world_size)
     if rank == 0 and namespace is not None:
         experimental_bundle,model_bundle = trainer.create_bundle_from_checkpoint(training_prog.checkpoint_save_path)
@@ -474,8 +526,10 @@ def train_distributed(
         dataset:DistributedDataset,\
         dist_args:DistTrainerArgs,
         trainer:DistributedTrainer,
-        note:str      
+        note:str,
+        distributed_sampler_args=None
     ):
+    print("REEACHED HERER!!")
     manager = multiprocessing.Manager()
     namespace = manager.Namespace()
     namespace.model_bundle = manager.dict()
@@ -489,6 +543,7 @@ def train_distributed(
                 trainer,
                 note,\
                 namespace,\
+                distributed_sampler_args,\
                 ),\
             nprocs=world_size,\
             join=True

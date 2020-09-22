@@ -40,7 +40,7 @@ class DistributedClassificationTrainer(DistributedTrainer):
             end = time.time()
 
             self.sync_grads()
-            self.optimizer.step()
+            self.optimizer.step() # theta - alpha*d(l)/d(theta)
             curr_index+=1
             if curr_index in print_checkpoints:
                 self.logger.info('%s %s %s For Rank : %s'%(str(losses),str(acc),str(batch_time),str(self.rank)))
